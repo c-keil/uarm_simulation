@@ -42,18 +42,46 @@ class linkage_robot():
 
     joint_max_torques = [32,32] #Nm
     
+    #Main arm links
     link_l1 = None
     link_a1 = None
     link_a3 = None
     link_a2 = None
     link_l2 = None
-    links = {'l1':link_l1,
-             'l2':link_l2,
-             'a1':link_a1,
-             'a2':link_a2,
-             'a3':link_a3,
-            }
-    
+    #grounded links
+    link_b1 = None
+    link_b2 = None
+    link_ee1 = None
+    link_ee2 = None
+    link_ee3 = None
+    link_t1 = None
+    link_t2 = None
+    link_t3 = None
+    # links = {'l1':link_l1,
+    #          'l2':link_l2,
+    #          'a1':link_a1,
+    #          'a2':link_a2,
+    #          'a3':link_a3,
+    # }
+    simple_links = ["l1",
+            "a1",
+            "a3",
+            "a2",
+            "l2",]
+            
+    grounded_links = ["b1", 
+            "b2", 
+            "ee1", 
+            "ee2", 
+            "ee3", 
+            "t1", 
+            "t2", 
+            "t3'"]
+    links = simple_links + grounded_links
+
+    link_colors = {link:"teal" for link in grounded_links}
+    link_colors = link_colors | {link:"darkviolet" for link in simple_links}
+
     def __init__(self):
         self.calculate_b1_pos()
         _ = self.calculate_kinematics()
@@ -107,19 +135,26 @@ class linkage_robot():
     def plot_link(self, link, ax, color = 'b'):
         ax.plot(link[0,:],link[1,:],color)
         
-    def plot_robot(self, hide_grounded_links = False):
+    def plot_robot(self, simple = False, colors = None):
         fig, ax = plt.subplots()
         ax.axis('equal')
         # for key in links.keys():
         #     plot_link
-        self.plot_link(self.link_l1,ax,color = 'b-')
-        self.plot_link(self.link_l2,ax,color = 'k-')
-        self.plot_link(self.link_a1,ax,color = 'c-')
-        self.plot_link(self.link_a2,ax,color = 'g--')
-        self.plot_link(self.link_a3,ax,color = 'k--')
+        if colors is None:
+            colors = self.link_colors
+        else:
+            colors = self.link_colors | colors
+        print(colors)
+        print(self.link_colors)
+        for link in self.simple_links:
+            self.plot_link(link,ax,color = colors[link])
+            # self.plot_link(self.link_l2,ax,color = 'k-')
+            # self.plot_link(self.link_a1,ax,color = 'c-')
+            # self.plot_link(self.link_a2,ax,color = 'g--')
+            # self.plot_link(self.link_a3,ax,color = 'k--')
         # ax.plot(self.link_l2[0,1],self.link_l2[1,1],'rx')
 
-        if not hide_grounded_links:
+        if not simple:
             self.plot_link(self.link_b1,ax,color = 'r--')
             self.plot_link(self.link_t1,ax,color = 'y-')
             self.plot_link(self.link_t2,ax,color = 'y-')
@@ -182,6 +217,8 @@ class linkage_robot():
             self.draw_arrow(ax,point_d,end=point_c)
         ax.annotate(f"{value:.1f}N",midpoint)
 
+    def plot_link_loads(self, results = None):
+        pass
 
     def calculate_static_loads(self, simple = False):
         '''calculate the max static loads in all links.
@@ -206,7 +243,13 @@ class linkage_robot():
             F_b1,F_t1x,F_t1y,F_b2,F_eex,F_eey = 0,0,0,0,0,0
             
         
-        T1, T2 = 32, 32
+        # T1, T2 = 32, 32
+        if simple:
+            F_l2x = 0
+            F_l2y = 50
+        else:
+            F_eex = 0
+            F_eey = 50
 
         #vectors
         l1_vec = (self.link_l1[:,1] - self.link_l1[:,0])
@@ -304,23 +347,40 @@ class linkage_robot():
                                     force_balance_t1x,
                                     force_balance_t1y,
                                     torque_balance_t1,]
-            
+        #solve system of equations
         result = sp.solve(equations)
         print(result)
         results = {}
         results["F_l1"] = np.array([result[F_l1x],result[F_l1y]], dtype = float)
-        results["F_l2"] = np.array([result[F_l2x],result[F_l2y]], dtype = float)
+        results["F_l2"] = np.array([float(F_l2x),float(F_l2y)], dtype = float)
+        # results["F_l2"] = np.array([result[F_l2x],result[F_l2y]], dtype = float)
         results["F_g1"] = np.array([result[F_g1x],result[F_g1y]], dtype = float)
         results["F_g2"] = np.array([result[F_g2x],result[F_g2y]], dtype = float)
-        results["F_g2"] = np.array([result[F_g2x],result[F_g2y]], dtype = float)
-        results["F_a2"] = np.array(result[F_g2x] * a2_hat.reshape(-1)[:2], dtype = float)
-        results["T1"] = float(T1)
-        results["T2"] = float(T2)
-        return results
-    
+        results["F_a2"] = np.array(result[F_a2] * a2_hat.reshape(-1)[:2], dtype = float)
+        results["T1"] = float(result[T1])
+        # results["T1"] = float(T1)
+        results["T2"] = float(result[T2])
+        # results["T2"] = float(T2)
+        if not simple:
+            results["F_b1"] = np.array(result[F_b1] * b1_hat.reshape(-1)[:2], dtype = float)
+            results["F_b2"] = np.array(result[F_b2] * b2_hat.reshape(-1)[:2], dtype = float)
+            results["F_t1"] = np.array([result[F_t1x],result[F_t1y]], dtype = float)
+            results["F_ee"] = np.array([float(F_eex),float(F_eey)], dtype = float)
+            # results["F_ee"] = np.array([result[F_eex],result[F_eey]], dtype = float)
 
-    
-    def plot_static_loads_simple(self, ax, results = None):
+        print("Torque Balance")
+        print(f"F_l1x = {result[F_l1x]}")
+        print(f"F_l1y = {result[F_l1y]}")
+        print(torque_balance_l1)
+        tb = torque_balance_l1.subs(F_l1x,result[F_l1x])
+        tb = tb.subs(F_l1y,result[F_l1y])
+        # tb = tb.subs(F_t1x,result[F_t1x])
+        # tb = tb.subs(T1))
+        print(tb)
+
+        return results
+        
+    def plot_static_link_loads_simple(self, ax, results = None):
         '''plots loads'''
         if results is None:
             results = self.calculate_static_loads()
@@ -357,16 +417,24 @@ class linkage_robot():
         ax.annotate(f"Fa2: {F_a2:.1f} Nm",(-0.1,0.2))
 
         # self.draw_link_force(ax,self.link_a2,-F_a2)
+    def plot_link_loads(self, results = None, simple = True):
+        '''plots loads for each link as a separate free body'''
+        if results is None:
+            results = self.calculate_static_loads(simple = simple)
+
         
+        
+
+
 # joint1_angle = 0
 # joint2_angle = -np.pi/2
 
 robot = linkage_robot()
-robot.calculate_kinematics([np.pi/20,-np.pi/20])
+robot.calculate_kinematics([np.pi/4,0.0])
 # robot.calculate_kinematics([np.pi/4,-np.pi/4])
 # robot.calculate_kinematics([0,-np.pi/2])
-results = robot.calculate_static_loads()
-fig, ax = robot.plot_robot(hide_grounded_links=True)
-robot.plot_static_loads_simple(ax,results)
+results = robot.calculate_static_loads( simple = True)
+fig, ax = robot.plot_robot(simple=True)
+robot.plot_static_link_loads_simple(ax,results)
 # robot.draw_arrow(ax,(0,0),(0.5,0.5),)
 plt.show()

@@ -348,8 +348,8 @@ class linkage_robot():
 
         #link ee
         Fee_vector = F_eex*N.i + F_eey*N.j
-        force_balance_eex = F_l2x + -F_b2x + F_eex
-        force_balance_eey = F_l2y + -F_b2y + F_eey
+        force_balance_eex = -F_l2x + -F_b2x + F_eex
+        force_balance_eey = -F_l2y + -F_b2y + F_eey
         torque_balance_ee = spvec.dot(N.k,
                                       spvec.cross(e1_vector,Fb2_vector)) + spvec.dot(N.k,
                                       spvec.cross(e2_vector,Fee_vector))
@@ -384,30 +384,21 @@ class linkage_robot():
             results["F_b2"] = np.array(result[F_b2] * b2_hat.reshape(-1)[:2], dtype = float)
             results["F_t1"] = np.array([result[F_t1x],result[F_t1y]], dtype = float)
             results["F_ee"] = np.array([float(F_eex),float(F_eey)], dtype = float)
-        # results["F_l2"] = np.array([result[F_l2x],result[F_l2y]], dtype = float)
         results["F_g1"] = np.array([result[F_g1x],result[F_g1y]], dtype = float)
         results["F_g2"] = np.array([result[F_g2x],result[F_g2y]], dtype = float)
         results["F_a2"] = np.array(result[F_a2] * a2_hat.reshape(-1)[:2], dtype = float)
         results["T1"] = float(result[T1])
-        # results["T1"] = float(T1)
         results["T2"] = float(result[T2])
-        # results["T2"] = float(T2)
-        # if not simple:
-        #     results["F_b1"] = np.array(result[F_b1] * b1_hat.reshape(-1)[:2], dtype = float)
-        #     results["F_b2"] = np.array(result[F_b2] * b2_hat.reshape(-1)[:2], dtype = float)
-        #     results["F_t1"] = np.array([result[F_t1x],result[F_t1y]], dtype = float)
-        #     results["F_ee"] = np.array([float(F_eex),float(F_eey)], dtype = float)
-            # results["F_ee"] = np.array([result[F_eex],result[F_eey]], dtype = float)
 
-        print("Torque Balance")
-        print(f"F_l1x = {result[F_l1x]}")
-        print(f"F_l1y = {result[F_l1y]}")
-        print(torque_balance_l1)
-        tb = torque_balance_l1.subs(F_l1x,result[F_l1x])
-        tb = tb.subs(F_l1y,result[F_l1y])
-        # tb = tb.subs(F_t1x,result[F_t1x])
-        # tb = tb.subs(T1))
-        print(tb)
+        # print("Torque Balance")
+        # print(f"F_l1x = {result[F_l1x]}")
+        # print(f"F_l1y = {result[F_l1y]}")
+        # print(torque_balance_l1)
+        # tb = torque_balance_l1.subs(F_l1x,result[F_l1x])
+        # tb = tb.subs(F_l1y,result[F_l1y])
+        # # tb = tb.subs(F_t1x,result[F_t1x])
+        # # tb = tb.subs(T1))
+        # print(tb)
 
         return results
         
@@ -470,8 +461,8 @@ robot = linkage_robot()
 robot.calculate_kinematics([np.pi/4,0.0])
 # robot.calculate_kinematics([np.pi/4,-np.pi/4])
 # robot.calculate_kinematics([0,-np.pi/2])
-results = robot.calculate_static_loads( simple = False)
-fig, ax = robot.plot_robot(simple=False)
-robot.plot_ee_load(ax,results, simple = False)
+results = robot.calculate_static_loads( simple = True)
+fig, ax = robot.plot_robot(simple=True)
+robot.plot_ee_load(ax,results, simple = True)
 # robot.draw_arrow(ax,(0,0),(0.5,0.5),)
 plt.show()

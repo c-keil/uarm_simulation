@@ -57,12 +57,7 @@ class linkage_robot():
     link_t1 = None
     link_t2 = None
     link_t3 = None
-    # links = {'l1':link_l1,
-    #          'l2':link_l2,
-    #          'a1':link_a1,
-    #          'a2':link_a2,
-    #          'a3':link_a3,
-    # }
+
     simple_links = ["l1",
             "a1",
             "a3",
@@ -76,8 +71,22 @@ class linkage_robot():
             "ee3", 
             "t1", 
             "t2", 
-            "t3'"]
-    links = simple_links + grounded_links
+            "t3"]
+    links = {
+        "l1":link_l1,
+        "a1" :link_a1,
+        "a3" :link_a3,
+        "a2" :link_a2,
+        "l2" :link_l2,
+        "b1" :link_b1,
+        "b2":link_b2,
+        "ee1":link_ee1,
+        "ee2":link_ee2,
+        "ee3":link_ee3,
+        "t1":link_t1,
+        "t2":link_t2,
+        "t3":link_t3,
+    }
 
     link_colors = {link:"teal" for link in grounded_links}
     link_colors = link_colors | {link:"darkviolet" for link in simple_links}
@@ -101,35 +110,46 @@ class linkage_robot():
             self.joint_angles = joint_angles
         
         #calcualte positons for main arm
-        self.link_l1 = np.array([[0,0,0],[self.l1*np.cos(self.joint_angles[0]), self.l1*np.sin(self.joint_angles[0]), 0]]).T    
+        self.link_l1 = np.array([[0,0,0],[self.l1*np.cos(self.joint_angles[0]), self.l1*np.sin(self.joint_angles[0]), 0]]).T
+        self.links['l1'] = self.link_l1
         self.link_a1 = np.array([[0,0,0],[-self.a1*np.cos(-self.joint_angles[1]), self.a1*np.sin(-self.joint_angles[1]), 0]]).T
+        self.links['a1'] = self.link_a1
     
         self.link_a3 = self.link_a1 + self.link_l1[:,1].reshape(-1,1)
+        self.links['a3'] = self.link_a3
         self.link_a2 = np.hstack((self.link_a1[:,1].reshape(-1,1),self.link_a3[:,1].reshape(-1,1)))
-        
+        self.links['a2'] = self.link_a2
         link_a3_vec = self.link_a3[:,1]-self.link_a3[:,0]
         link_a3_hat = (link_a3_vec/np.linalg.norm(link_a3_vec)).reshape(-1,1)
         self.link_l2 = np.hstack((self.link_l1[:,1].reshape(-1,1), self.link_l1[:,1].reshape(-1,1)-link_a3_hat*self.l1))
-        
+        self.links['l2'] = self.link_l2
+
         # calcualte grounded linkage positions
         self.link_b1 = self.link_l1 + self.b1_base.reshape(-1,1)
+        self.links['b1'] = self.link_b1
         self.link_t1 = np.hstack((self.link_l1[:,-1].reshape(-1,1), self.link_b1[:,-1].reshape(-1,1)))
+        self.links['t1'] = self.link_t1
         t1_vec = self.link_t1[:,-1] - self.link_t1[:,0]
         t1_hat = t1_vec/np.linalg.norm(t1_vec)
         
         link_t2_end = self.t2 * (R.from_euler('z', self.t_12_angle).as_matrix() @ t1_hat.reshape(-1,1)) + self.link_l1[:,-1].reshape(-1,1)
         self.link_t2 = np.hstack((self.link_t1[:,0].reshape(-1,1), link_t2_end))
+        self.links['t2'] = self.link_t2
         self.link_t3 = np.hstack((self.link_t1[:,-1].reshape(-1,1), self.link_t2[:,-1].reshape(-1,1)))
+        self.links['t3'] = self.link_t3
 
         l2_vec = (self.link_l2[:,-1] - self.link_l2[:,0]).reshape(-1,1)
         self.link_b2 = np.hstack((self.link_t2[:,-1].reshape(-1,1), self.link_t2[:,-1].reshape(-1,1) + l2_vec))
-
+        self.links['b2'] = self.link_b2
         self.link_ee1 = np.hstack((self.link_l2[:,-1].reshape(-1,1), self.link_b2[:,-1].reshape(-1,1)))
+        self.links['ee1'] = self.link_ee1
         e1_vec = (self.link_ee1[:,-1] - self.link_ee1[:,0]).reshape(-1,1)
         e1_hat = e1_vec/np.linalg.norm(e1_vec)
         e2_vec = self.e2 * (R.from_euler('z',self.e_12_angle).as_matrix() @ e1_hat)
         self.link_ee2 = np.hstack((self.link_l2[:,-1].reshape(-1,1), self.link_l2[:,-1].reshape(-1,1) + e2_vec))
+        self.links['ee2'] = self.link_ee2
         self.link_ee3 = np.hstack((self.link_ee2[:,-1].reshape(-1,1), self.link_ee1[:,-1].reshape(-1,1)))
+        self.links['ee3'] = self.link_ee3
         return self.link_l2[:,1].reshape(-1,1)
 
     def plot_link(self, link, ax, color = 'b'):
@@ -144,10 +164,12 @@ class linkage_robot():
             colors = self.link_colors
         else:
             colors = self.link_colors | colors
-        print(colors)
-        print(self.link_colors)
+        # print(colors)
+        # print(self.link_colors)
         for link in self.simple_links:
-            self.plot_link(link,ax,color = colors[link])
+            # print(link)
+            # print(self.links)
+            self.plot_link(self.links[link],ax,color = colors[link])
             # self.plot_link(self.link_l2,ax,color = 'k-')
             # self.plot_link(self.link_a1,ax,color = 'c-')
             # self.plot_link(self.link_a2,ax,color = 'g--')
@@ -155,29 +177,31 @@ class linkage_robot():
         # ax.plot(self.link_l2[0,1],self.link_l2[1,1],'rx')
 
         if not simple:
-            self.plot_link(self.link_b1,ax,color = 'r--')
-            self.plot_link(self.link_t1,ax,color = 'y-')
-            self.plot_link(self.link_t2,ax,color = 'y-')
-            self.plot_link(self.link_t3,ax,color = 'y-')
-            self.plot_link(self.link_b2,ax,color = 'r--')
-            self.plot_link(self.link_ee1,ax,color = 'y-')
-            self.plot_link(self.link_ee2,ax,color = 'y-')
-            self.plot_link(self.link_ee3,ax,color = 'y-')
+            for link in self.grounded_links:
+                self.plot_link(self.links[link],ax,color = colors[link])
+            # self.plot_link(self.link_b1,ax,color = 'r--')
+            # self.plot_link(self.link_t1,ax,color = 'y-')
+            # self.plot_link(self.link_t2,ax,color = 'y-')
+            # self.plot_link(self.link_t3,ax,color = 'y-')
+            # self.plot_link(self.link_b2,ax,color = 'r--')
+            # self.plot_link(self.link_ee1,ax,color = 'y-')
+            # self.plot_link(self.link_ee2,ax,color = 'y-')
+            # self.plot_link(self.link_ee3,ax,color = 'y-')
             
         return fig, ax
     
-    def plot_robot_(self):
-        fig, ax = plt.subplots()
-        ax.axis('equal')
-        # for key in links.keys():
-        #     plot_link
-        self.plot_link(self.link_l1,ax,color = 'b-')
-        self.plot_link(self.link_l2,ax,color = 'k-')
-        self.plot_link(self.link_a1,ax,color = 'c--')
-        self.plot_link(self.link_a2,ax,color = 'g--')
-        self.plot_link(self.link_a3,ax,color = 'k--')
-        ax.plot(self.link_l2[0,1],self.link_l2[1,1],'rx')
-        return fig, ax
+    # def plot_robot_(self):
+    #     fig, ax = plt.subplots()
+    #     ax.axis('equal')
+    #     # for key in links.keys():
+    #     #     plot_link
+    #     self.plot_link(self.link_l1,ax,color = 'b-')
+    #     self.plot_link(self.link_l2,ax,color = 'k-')
+    #     self.plot_link(self.link_a1,ax,color = 'c--')
+    #     self.plot_link(self.link_a2,ax,color = 'g--')
+    #     self.plot_link(self.link_a3,ax,color = 'k--')
+    #     ax.plot(self.link_l2[0,1],self.link_l2[1,1],'rx')
+    #     return fig, ax
     
     def draw_arrow(self, ax, start, end = None, vector = None, text = ''):
         if end is None and vector is None:
@@ -352,7 +376,14 @@ class linkage_robot():
         print(result)
         results = {}
         results["F_l1"] = np.array([result[F_l1x],result[F_l1y]], dtype = float)
-        results["F_l2"] = np.array([float(F_l2x),float(F_l2y)], dtype = float)
+        if simple:
+            results["F_l2"] = np.array([float(F_l2x),float(F_l2y)], dtype = float)
+        else:
+            results["F_l2"] = np.array([result[F_l2x],result[F_l2y]], dtype = float)
+            results["F_b1"] = np.array(result[F_b1] * b1_hat.reshape(-1)[:2], dtype = float)
+            results["F_b2"] = np.array(result[F_b2] * b2_hat.reshape(-1)[:2], dtype = float)
+            results["F_t1"] = np.array([result[F_t1x],result[F_t1y]], dtype = float)
+            results["F_ee"] = np.array([float(F_eex),float(F_eey)], dtype = float)
         # results["F_l2"] = np.array([result[F_l2x],result[F_l2y]], dtype = float)
         results["F_g1"] = np.array([result[F_g1x],result[F_g1y]], dtype = float)
         results["F_g2"] = np.array([result[F_g2x],result[F_g2y]], dtype = float)
@@ -361,11 +392,11 @@ class linkage_robot():
         # results["T1"] = float(T1)
         results["T2"] = float(result[T2])
         # results["T2"] = float(T2)
-        if not simple:
-            results["F_b1"] = np.array(result[F_b1] * b1_hat.reshape(-1)[:2], dtype = float)
-            results["F_b2"] = np.array(result[F_b2] * b2_hat.reshape(-1)[:2], dtype = float)
-            results["F_t1"] = np.array([result[F_t1x],result[F_t1y]], dtype = float)
-            results["F_ee"] = np.array([float(F_eex),float(F_eey)], dtype = float)
+        # if not simple:
+        #     results["F_b1"] = np.array(result[F_b1] * b1_hat.reshape(-1)[:2], dtype = float)
+        #     results["F_b2"] = np.array(result[F_b2] * b2_hat.reshape(-1)[:2], dtype = float)
+        #     results["F_t1"] = np.array([result[F_t1x],result[F_t1y]], dtype = float)
+        #     results["F_ee"] = np.array([float(F_eex),float(F_eey)], dtype = float)
             # results["F_ee"] = np.array([result[F_eex],result[F_eey]], dtype = float)
 
         print("Torque Balance")
@@ -380,41 +411,47 @@ class linkage_robot():
 
         return results
         
-    def plot_static_link_loads_simple(self, ax, results = None):
-        '''plots loads'''
+    def plot_ee_load(self, ax, results = None, simple = True):
+        '''plot force exerted by ee'''
         if results is None:
             results = self.calculate_static_loads()
-        print(results)
+        # print(results)
 
-        #l2
-        F_l2_vec = results["F_l2"]
-        print(F_l2_vec)
-        F_l2 = np.linalg.norm(F_l2_vec)
-        F_l2_vec = F_l2_vec/500
-        F_l2_pos = self.link_l2[:2,-1]
-        self.draw_arrow(ax, F_l2_pos,vector=F_l2_vec,text=f"{F_l2:.1f}N")
+        if simple:
+            #l2
+            F_l2_vec = results["F_l2"]
+            F_l2 = np.linalg.norm(F_l2_vec)
+            F_l2_vec = F_l2_vec/500
+            F_l2_pos = self.link_l2[:2,-1]
+            self.draw_arrow(ax, F_l2_pos,vector=-F_l2_vec,text=f"{F_l2:.1f}N")
+        else:
+            F_ee_vec = results["F_ee"]
+            F_ee = np.linalg.norm(F_ee_vec)
+            F_ee_vec = F_ee_vec/500
+            F_ee_pos = self.link_ee2[:2,-1]
+            self.draw_arrow(ax, F_ee_pos,vector=-F_ee_vec,text=f"{F_ee:.1f}N")
 
-        F_g1_vec = results["F_g1"]
-        F_g2_vec = results["F_g2"]
-        F_g1 = np.linalg.norm(F_g1_vec)
-        F_g1_vec = F_g1_vec/(4*F_g1)
-        F_g1_pos = np.array([0,0])
-        F_g2 = np.linalg.norm(F_g2_vec)
-        F_g2_vec = F_g2_vec/(4*F_g2)
-        F_g2_pos = np.array([0,0])
+        # F_g1_vec = results["F_g1"]
+        # F_g2_vec = results["F_g2"]
+        # F_g1 = np.linalg.norm(F_g1_vec)
+        # F_g1_vec = F_g1_vec/(4*F_g1)
+        # F_g1_pos = np.array([0,0])
+        # F_g2 = np.linalg.norm(F_g2_vec)
+        # F_g2_vec = F_g2_vec/(4*F_g2)
+        # F_g2_pos = np.array([0,0])
 
-        F_a2_vec = results["F_a2"]
-        F_a2 = np.linalg.norm(F_a2_vec)
+        # F_a2_vec = results["F_a2"]
+        # F_a2 = np.linalg.norm(F_a2_vec)
 
-        ax.set_xlim([-0.3,1.2])
-        # ax.set_ylim([-0.3,1])
-        self.draw_arrow(ax, F_g1_pos, vector = F_g1_vec)
-        self.draw_arrow(ax, F_g2_pos, vector = F_g2_vec)
+        # ax.set_xlim([-0.3,1.2])
+        # # ax.set_ylim([-0.3,1])
+        # self.draw_arrow(ax, F_g1_pos, vector = F_g1_vec)
+        # self.draw_arrow(ax, F_g2_pos, vector = F_g2_vec)
         ax.annotate(f"T1: {results["T1"]:.1f} Nm",(-0.1,0.4))
         ax.annotate(f"T2: {results["T2"]:.1f} Nm",(-0.1,0.35))
-        ax.annotate(f"Fg1: {F_g1:.1f}N",(-0.1,0.3))
-        ax.annotate(f"Fg2: {F_g2:.1f}N",(-0.1,0.25))
-        ax.annotate(f"Fa2: {F_a2:.1f} Nm",(-0.1,0.2))
+        # ax.annotate(f"Fg1: {F_g1:.1f}N",(-0.1,0.3))
+        # ax.annotate(f"Fg2: {F_g2:.1f}N",(-0.1,0.25))
+        # ax.annotate(f"Fa2: {F_a2:.1f} Nm",(-0.1,0.2))
 
         # self.draw_link_force(ax,self.link_a2,-F_a2)
     def plot_link_loads(self, results = None, simple = True):
@@ -433,8 +470,8 @@ robot = linkage_robot()
 robot.calculate_kinematics([np.pi/4,0.0])
 # robot.calculate_kinematics([np.pi/4,-np.pi/4])
 # robot.calculate_kinematics([0,-np.pi/2])
-results = robot.calculate_static_loads( simple = True)
-fig, ax = robot.plot_robot(simple=True)
-robot.plot_static_link_loads_simple(ax,results)
+results = robot.calculate_static_loads( simple = False)
+fig, ax = robot.plot_robot(simple=False)
+robot.plot_ee_load(ax,results, simple = False)
 # robot.draw_arrow(ax,(0,0),(0.5,0.5),)
 plt.show()

@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+
 # import matplotlib.axes.Axes as Axes
 from matplotlib.patches import ArrowStyle
 import sympy as sp
@@ -88,8 +90,31 @@ class linkage_robot():
         "t3":link_t3,
     }
 
+    link_names = ["Upper Arm",
+                    "Forearm Gearbox Output",
+                    "Forearm Linkage",
+                    "Forearm",
+                    "Upper Arm Grounded Linkage",
+                    "Triangle",
+                    "Forearm Grounded Linkage",
+                    "End Effector"]
+    link_names_simple = link_names[:4]
+
+    link_names_to_link_objects = [["l1"],
+                                  ["a1"],
+                                  ["a2"],
+                                  ["a3","l2"],
+                                  ["b1"],
+                                  ["t1","t2","t3"],
+                                  ["b2"],
+                                  ["ee1","ee2","ee3"]]
+    
+
     link_colors = {link:"teal" for link in grounded_links}
     link_colors = link_colors | {link:"darkviolet" for link in simple_links}
+
+    x_window = [0,0]
+    y_window = [0,0]
 
     def __init__(self):
         self.calculate_b1_pos()
@@ -104,6 +129,20 @@ class linkage_robot():
             self.b1_base = np.array([self.t1*np.cos(self.t1_start_angle), self.t1*np.sin(self.t1_start_angle), 0 ]).reshape(-1,1)
         else:
             self.b1_base = b1_base
+
+    def track_plot_window_size_(self, point, inflate = 0.0):
+        '''keeps track of the maximum figure window size necessary when adding annotations'''
+        try:
+            if point[0] < self.x_window[0]:
+                self.x_window[0] = point[0] - inflate
+            if point[0] > self.x_window[1]:
+                self.x_window[1] = point[0] + inflate
+            if point[1] < self.y_window[0]:
+                self.y_window[0] = point[1] - inflate
+            if point[1] > self.y_window[1]:
+                self.y_window[1] = point[1] + inflate
+        except:
+            pass
 
     def calculate_kinematics(self, joint_angles = None):
         if not joint_angles is None:
@@ -155,15 +194,19 @@ class linkage_robot():
     def plot_link(self, link, ax, color = 'b'):
         ax.plot(link[0,:],link[1,:],color)
         
-    def plot_robot(self, simple = False, colors = None):
-        fig, ax = plt.subplots()
+    def plot_robot(self, ax, simple = False, colors = None):
+        # if ax is None:
+        #     fig, ax = plt.subplots()
         ax.axis('equal')
         # for key in links.keys():
         #     plot_link
         if colors is None:
             colors = self.link_colors
         else:
-            colors = self.link_colors | colors
+            if isinstance(colors,str):
+                colors = {key:colors for key in self.link_colors}
+            else:
+                colors = self.link_colors | colors
         # print(colors)
         # print(self.link_colors)
         for link in self.simple_links:
@@ -187,8 +230,8 @@ class linkage_robot():
             # self.plot_link(self.link_ee1,ax,color = 'y-')
             # self.plot_link(self.link_ee2,ax,color = 'y-')
             # self.plot_link(self.link_ee3,ax,color = 'y-')
-            
-        return fig, ax
+        self.update_plot_lims(ax)
+        # return fig, ax
     
     # def plot_robot_(self):
     #     fig, ax = plt.subplots()
@@ -203,6 +246,45 @@ class linkage_robot():
     #     ax.plot(self.link_l2[0,1],self.link_l2[1,1],'rx')
     #     return fig, ax
     
+    # def link_vector()
+
+    def draw_torque(self, ax, link, value, center = 0, color = 'k', scale = 0.05, text = ""):
+        '''draws a curved arrow representing torque.'''
+
+        a = (180.0-45)/2
+        if value > 0:
+            curvature = 0
+            arrowstyle = patches.ArrowStyle.CurveA()
+        else:
+            curvature = 1
+            arrowstyle = patches.ArrowStyle.CurveB()
+
+        
+        torque_center = link[:2,center]
+        link_vector = link[:,-1]-link[:,center]
+        link_vector_hat = link_vector/np.linalg.norm(link_vector)
+        offset_angle = np.rad2deg(np.arccos(link_vector_hat[0]))
+
+        start_point = torque_center + link_vector_hat[:2]*scale
+        rot = np.array([[np.cos(np.pi/2), -np.sin(np.pi/2)],
+                        [np.sin(np.pi/2),  np.cos(np.pi/2)]])
+        end_point = torque_center + rot@link_vector_hat[:2]*scale
+        angleA = curvature*(180-a) + offset_angle
+        angleB= curvature*(90-(180-a))  + offset_angle
+        connectionstyle = patches.ConnectionStyle.Angle3(angleA=angleA, angleB=angleB)
+
+        a = patches.FancyArrowPatch(start_point, end_point,
+                             connectionstyle=connectionstyle, 
+                             arrowstyle=arrowstyle,
+                             mutation_scale=10)
+        ax.add_patch(a)
+        text_point = end_point + np.array([0, 0.03])
+        if not text == "":
+            ax.annotate(text,text_point,annotation_clip=False)
+
+        self.track_plot_window_size_(text_point)
+        self.track_plot_window_size_(end_point)
+
     def draw_arrow(self, ax, start, end = None, vector = None, text = ''):
         if end is None and vector is None:
             raise NotImplementedError
@@ -218,9 +300,16 @@ class linkage_robot():
         else:
             end_coords = start_coords + np.array(vector).reshape(-1)[:2]
 
-        ax.annotate("", end_coords, xytext = start_coords, arrowprops = {'arrowstyle':'->'})
+        ax.annotate("", end_coords, xytext = start_coords, arrowprops = {'arrowstyle':'->'}, annotation_clip=False)
+        self.track_plot_window_size_(start_coords)
+        self.track_plot_window_size_(end_coords)
         if not text == "":
-            ax.annotate(text,end_coords)
+            if end_coords[0]-start_coords[0] < 0:
+                text_coords = end_coords - np.array([0.03,0.03])
+            else:
+                text_coords = end_coords
+            self.track_plot_window_size_(text_coords)
+            ax.annotate(text,text_coords,annotation_clip=False)
         # ax.annotate('', end_coords, xytext = start_coords, arrowprops = {'width':0.5, 'headwidth':5, 'headlength':5})
     
     def draw_link_force(self,ax,link,value):
@@ -241,8 +330,8 @@ class linkage_robot():
             self.draw_arrow(ax,point_d,end=point_c)
         ax.annotate(f"{value:.1f}N",midpoint)
 
-    def plot_link_loads(self, results = None):
-        pass
+    # def plot_link_loads(self, results = None):
+    #     pass
 
     def calculate_static_loads(self, simple = False):
         '''calculate the max static loads in all links.
@@ -319,6 +408,22 @@ class linkage_robot():
         F_b2x = Fb2_vector.dot(N.i)
         F_b2y = Fb2_vector.dot(N.j)
 
+        self.force_locations = {"F_l1":self.link_l1[:,-1],
+                           "F_g1":self.link_l1[:,0],
+                           "F_g2":self.link_a1[:,0],
+                           "F_t1":self.link_l1[:,-1],
+                           "T1":self.link_l1[:,0],
+                           "T2":self.link_a1[:,0],
+                           "F_a2":self.link_a2[:,0],
+                           "F_a2_":self.link_a2[:,-1],
+                           "F_b1":self.link_b1[:,0],
+                           "F_b1_":self.link_b1[:,-1],
+                           "F_b2":self.link_b2[:,0],
+                           "F_b2_":self.link_b2[:,-1],
+                           "F_l2":self.link_l2[:,-1],
+                           "F_ee":self.link_ee2[:,-1]
+                           }
+
         #link l1
         force_balance_l1x = F_g1x + F_l1x + F_t1x
         force_balance_l1y = F_g1y + F_l1y + F_t1y
@@ -374,6 +479,7 @@ class linkage_robot():
         #solve system of equations
         result = sp.solve(equations)
         print(result)
+
         results = {}
         results["F_l1"] = np.array([result[F_l1x],result[F_l1y]], dtype = float)
         if simple:
@@ -390,6 +496,17 @@ class linkage_robot():
         results["T1"] = float(result[T1])
         results["T2"] = float(result[T2])
 
+        upper_arm_link_to_forces = ["F_l1", "F_g1", "T1"]
+        forearm_link_to_forces = ["F_l1", "F_a2", "F_l2",]
+        a1_link_to_forces = ["T2","F_a2"]
+        a2_link_to_forces = ["F_a2"]#need to flesh this out
+        
+        self.forces_per_link = {
+            self.link_names[0]:upper_arm_link_to_forces,
+            self.link_names[1]:a1_link_to_forces,
+            self.link_names[2]:a2_link_to_forces,
+            self.link_names[3]:forearm_link_to_forces
+        }
         # print("Torque Balance")
         # print(f"F_l1x = {result[F_l1x]}")
         # print(f"F_l1y = {result[F_l1y]}")
@@ -440,20 +557,81 @@ class linkage_robot():
         # self.draw_arrow(ax, F_g2_pos, vector = F_g2_vec)
         ax.annotate(f"T1: {results["T1"]:.1f} Nm",(-0.1,0.4))
         ax.annotate(f"T2: {results["T2"]:.1f} Nm",(-0.1,0.35))
+        
         # ax.annotate(f"Fg1: {F_g1:.1f}N",(-0.1,0.3))
         # ax.annotate(f"Fg2: {F_g2:.1f}N",(-0.1,0.25))
         # ax.annotate(f"Fa2: {F_a2:.1f} Nm",(-0.1,0.2))
 
         # self.draw_link_force(ax,self.link_a2,-F_a2)
+    # def plot_force(self, ax, pos, vector, scale = 0.01, color='k'):
+        # self.draw_arrow(ax, pos,vector,text=f"{F_l2:.1f}N")
+
+    def update_plot_lims(self, ax : plt.axis, inflate = 0.0):
+        x_lims = ax.get_xlim()
+        y_lims = ax.get_ylim()
+        
+        if x_lims[0] < self.x_window[0]:
+            self.x_window[0] = x_lims[0]
+        if x_lims[1] > self.x_window[1]:
+            self.x_window[1] = x_lims[1]
+        if y_lims[0] < self.y_window[0]:
+            self.y_window[0] = y_lims[0]
+        if y_lims[1] > self.y_window[1]:
+            self.y_window[1] = y_lims[1]
+
+        self.x_window[0] -= inflate
+        self.x_window[1] += inflate
+        self.y_window[0] -= inflate
+        self.y_window[1] += inflate
+
+        ax.set_xlim(self.x_window)
+        ax.set_ylim(self.y_window)
+
     def plot_link_loads(self, results = None, simple = True):
         '''plots loads for each link as a separate free body'''
         if results is None:
             results = self.calculate_static_loads(simple = simple)
-
         
+        if simple:
+            nplots = 4
+            fig, axes = plt.subplots(2,2)
+        else:
+            nplots = 8
+            fig, axes = plt.subplots(4,2)
         
+        scale = 0.0005
 
+        for i, ax in enumerate(axes.reshape(-1)):
+            ax.set_title(self.link_names[i])
+            self.plot_robot(ax, simple = simple, colors = 'lightgray')
+            #highlight link
+            for l in self.link_names_to_link_objects[i]:
+                self.plot_link(self.links[l],ax,color = "darkblue")
+            #add forces
+            forces = self.forces_per_link[self.link_names[i]]
+            for force in forces:
+                
+                if force[0]=="T":
+                    torque = results[force]
+                    torque_location = self.force_locations[force][:2]
+                    torque_link = self.links['l1']
+                    self.draw_torque(ax, torque_link, torque, 0, text=f"{torque:.1f}Nm")
+                    continue
 
+                scalar_force = np.linalg.norm(results[force])
+                # print(force)
+                # print(self.force_locations[force])
+                # print(results[force] * scale)
+                force_location = self.force_locations[force][:2]
+                scaled_force_vector = results[force] * scale
+                force_arrow_endpoint = force_location + scaled_force_vector
+                
+                self.draw_arrow(ax, 
+                                force_location,
+                                force_arrow_endpoint,
+                                text=f"{scalar_force:.1f}N")
+
+            self.update_plot_lims(ax)
 # joint1_angle = 0
 # joint2_angle = -np.pi/2
 
@@ -462,7 +640,9 @@ robot.calculate_kinematics([np.pi/4,0.0])
 # robot.calculate_kinematics([np.pi/4,-np.pi/4])
 # robot.calculate_kinematics([0,-np.pi/2])
 results = robot.calculate_static_loads( simple = True)
-fig, ax = robot.plot_robot(simple=True)
+fig, ax = plt.subplots()
+robot.plot_robot(ax, simple=True)
 robot.plot_ee_load(ax,results, simple = True)
 # robot.draw_arrow(ax,(0,0),(0.5,0.5),)
+robot.plot_link_loads(results = results, simple = True)
 plt.show()

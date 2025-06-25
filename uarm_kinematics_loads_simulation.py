@@ -253,21 +253,22 @@ class linkage_robot():
 
         a = (180.0-45)/2
         if value > 0:
-            curvature = 0
-            arrowstyle = patches.ArrowStyle.CurveA()
-        else:
             curvature = 1
             arrowstyle = patches.ArrowStyle.CurveB()
+            ang = np.pi/2
+        else:
+            curvature = -1
+            arrowstyle = patches.ArrowStyle.CurveB()
+            ang = -np.pi/2
 
-        
         torque_center = link[:2,center]
         link_vector = link[:,-1]-link[:,center]
         link_vector_hat = link_vector/np.linalg.norm(link_vector)
         offset_angle = np.rad2deg(np.arccos(link_vector_hat[0]))
 
         start_point = torque_center + link_vector_hat[:2]*scale
-        rot = np.array([[np.cos(np.pi/2), -np.sin(np.pi/2)],
-                        [np.sin(np.pi/2),  np.cos(np.pi/2)]])
+        rot = np.array([[np.cos(ang), -np.sin(ang)],
+                        [np.sin(ang),  np.cos(ang)]])
         end_point = torque_center + rot@link_vector_hat[:2]*scale
         angleA = curvature*(180-a) + offset_angle
         angleB= curvature*(90-(180-a))  + offset_angle
@@ -340,29 +341,31 @@ class linkage_robot():
 
         #symbols
         N = spvec.CoordSys3D('N')
-        F_g1x,F_g1y,F_g2x,F_g2y,F_a2,F_l1x,F_l1y,F_l2x,F_l2y,T1,T2 = sp.symbols(('F_g1x','F_g1y',
-                   'F_g2x','F_g2y',
-                   'F_a2',
-                   'F_l1x','F_l1y',
+        F_g1x,F_g1y,F_g2x,F_g2y,T1,T2 = sp.symbols(('F_g1x','F_g1y','F_g2x','F_g2y','T1','T2'))
+        F_l1x,F_l1y,F_l1x_,F_l1y_,F_l2x,F_l2y,F_l2x_,F_l2y_,= sp.symbols(('F_l1x','F_l1y',
+                   'F_l1x_','F_l1y_',
                    'F_l2x','F_l2y',
-                    'T1','T2'))
+                   'F_l2x_','F_l2y_',))
+        F_a1,F_a2,F_a1_,F_a2_,= sp.symbols(('F_a1', 'F_a2','F_a1_', 'F_a2_',))
         l1x,l1y,l2x,l2y = sp.symbols(('l1x','l1y','l2x','l2y'))
         if not simple:
-            F_b1,F_t1x,F_t1y,F_b2,F_eex,F_eey = sp.symbols(('F_b1',
-                                                            'F_t1x','F_t1y',
-                                                            'F_b2',
-                                                            'F_eex','F_eey'))
+            F_g3,F_g3_,F_b1,F_b1_,F_b2,F_b2_ = sp.symbols(('F_g3','F_g3_','F_b1','F_b1_','F_b2','F_b2_',))
+            F_t1x,F_t1y,F_t1x_,F_t1y_,F_t2,F_t2_,F_eex,F_eey, = sp.symbols(('F_t1x','F_t1y',
+                                                                            'F_t1x_','F_t1y_',
+                                                                            'F_t2','F_t2_',
+                                                                            'F_eex','F_eey'))
         else:
-            F_b1,F_t1x,F_t1y,F_b2,F_eex,F_eey = 0,0,0,0,0,0
+            F_g3,F_g3_,F_b1,F_b1_,F_b2,F_b2_ = 0,0,0,0,0,0
+            F_t1x,F_t1y,F_t1x_,F_t1y_,F_t2,F_t2_,F_eex,F_eey, = 8*(0,)
             
         
         # T1, T2 = 32, 32
         if simple:
             F_l2x = 0
-            F_l2y = 50
+            F_l2y = -50
         else:
             F_eex = 0
-            F_eey = 50
+            F_eey = -50
 
         #vectors
         l1_vec = (self.link_l1[:,1] - self.link_l1[:,0])
@@ -392,120 +395,235 @@ class linkage_robot():
         b2_vector_hat = b2_vector/sp.sqrt(b2_vector.dot(b2_vector))
         Fl1_vector = N.i*F_l1x + N.j*F_l1y
         Ft1_vector = N.i*F_t1x + N.j*F_t1y
+        Ft1_vector_ = N.i*F_t1x_ + N.j*F_t1y_
         e1_vector = N.i*e1_vec[0] + N.j*e1_vec[1]
         e2_vector = N.i*e2_vec[0] + N.j*e2_vec[1]
         
-        #linakge forces
+        #linakge forces - constraint is only valid for a static scenario
+        F_a1x = F_a1 * a2_hat[0]
+        F_a1y = F_a1 * a2_hat[1]
+        F_a1x_ = F_a1_ * a2_hat[0]
+        F_a1y_ = F_a1_ * a2_hat[1]
+        constraint_Fa1 = F_a1 + F_a1_
+
         F_a2x = F_a2 * a2_hat[0]
         F_a2y = F_a2 * a2_hat[1]
+        F_a2x_ = F_a2_ * a2_hat[0]
+        F_a2y_ = F_a2_ * a2_hat[1]
+        constraint_Fa2 = F_a2 + F_a2_
+        
+
+        Fa1_vector = N.i*F_a1x + N.j*F_a1y
         Fa2_vector = N.i*F_a2x + N.j*F_a2y
+        Fa2_vector_ = N.i*F_a2x_ + N.j*F_a2y_
+        # F_t2_vector = N.i*F_t2 + N.j*F_t2y_
         # F_b1x = F_b1 * b1_hat[0]
         # F_b1y = F_b1 * b1_hat[1]
+        #applies implicit constraint that simple links have only axial forces in static configuration
         Fb1_vector = F_b1*b1_vector_hat
+        Fb1_vector_ = F_b1_*b1_vector_hat
+        F_g3_vector = F_g3*b1_vector_hat
+        F_g3x = F_g3_vector.dot(N.i)
+        F_g3y = F_g3_vector.dot(N.j)
         F_b1x = Fb1_vector.dot(N.i)
+        F_b1x_ = Fb1_vector_.dot(N.i)
         F_b1y = Fb1_vector.dot(N.j)
+        F_b1y_ = Fb1_vector_.dot(N.j)
         Fb2_vector = F_b2*b2_vector_hat
+        Fb2_vector_ = F_b2_*b2_vector_hat
+        Ft2_vector = F_t2*b2_vector_hat
+        Ft2_vector_ = F_t2_*b2_vector_hat
+        F_t2x = Ft2_vector.dot(N.i)
+        F_t2y = Ft2_vector.dot(N.j)
+        F_t2x_ = Ft2_vector_.dot(N.i)
+        F_t2y_ = Ft2_vector_.dot(N.j)
         F_b2x = Fb2_vector.dot(N.i)
         F_b2y = Fb2_vector.dot(N.j)
+        F_b2x_ = Fb2_vector_.dot(N.i)
+        F_b2y_ = Fb2_vector_.dot(N.j)
 
-        self.force_locations = {"F_l1":self.link_l1[:,-1],
-                           "F_g1":self.link_l1[:,0],
-                           "F_g2":self.link_a1[:,0],
-                           "F_t1":self.link_l1[:,-1],
-                           "T1":self.link_l1[:,0],
-                           "T2":self.link_a1[:,0],
-                           "F_a2":self.link_a2[:,0],
-                           "F_a2_":self.link_a2[:,-1],
-                           "F_b1":self.link_b1[:,0],
-                           "F_b1_":self.link_b1[:,-1],
-                           "F_b2":self.link_b2[:,0],
-                           "F_b2_":self.link_b2[:,-1],
-                           "F_l2":self.link_l2[:,-1],
-                           "F_ee":self.link_ee2[:,-1]
-                           }
+        #for plotting
+        # self.force_orientations = {}
+        self.force_locations = {
+                        "F_l1":self.link_l1[:,-1],
+                        "F_l1_":self.link_l1[:,-1],
+                        "F_g1":self.link_l1[:,0],
+                        "F_g2":self.link_a1[:,0],
+                        "F_t1":self.link_l1[:,-1],
+                        "F_t1_":self.link_l1[:,-1],
+                        "T1":self.link_l1[:,0],
+                        "T2":self.link_a1[:,0],
+                        "F_a1":self.link_a2[:,0],
+                        "F_a1_":self.link_a2[:,0],
+                        "F_a2":self.link_a2[:,-1],
+                        "F_a2_":self.link_a2[:,-1],
+                        "F_b1":self.link_b1[:,-1],
+                        "F_b1_":self.link_b1[:,-1],
+                        "F_t2":self.link_b2[:,0],
+                        "F_t2_":self.link_b2[:,0],
+                        "F_b2":self.link_b2[:,1],
+                        "F_b2_":self.link_b2[:,1],
+                        "F_l2":self.link_l2[:,-1],
+                        "F_l2_":self.link_l2[:,-1],
+                        "F_ee":self.link_ee2[:,-1],
+                        "F_g3":self.link_b1[:,0]
+                        }
 
         #link l1
-        force_balance_l1x = F_g1x + F_l1x + F_t1x
-        force_balance_l1y = F_g1y + F_l1y + F_t1y
+        force_balance_l1x = F_g1x + F_l1x + F_t1x_
+        force_balance_l1y = F_g1y + F_l1y + F_t1y_
         torque_balance_l1 = T1 + spvec.dot(N.k,
                                            spvec.cross(l1_vector,Fl1_vector)) + spvec.dot(N.k,
-                                           spvec.cross(l1_vector,Ft1_vector))
-
+                                           spvec.cross(l1_vector,Ft1_vector_))
+        constraint_l1x = F_l1x + F_l1x_
+        constraint_l1y = F_l1y + F_l1y_
+        # print(l1_vector)
+        # print(torque_balance_l1)
         #link a1
-        force_balance_a1x = F_g2x + F_a2x
-        force_balance_a1y = F_g2y + F_a2y
-        torque_balance_a1 = T2 + spvec.dot(N.k,spvec.cross(a1_vector,Fa2_vector))
-    
+        force_balance_a1x = F_g2x + F_a1x
+        force_balance_a1y = F_g2y + F_a1y
+        torque_balance_a1 = T2 + spvec.dot(N.k,spvec.cross(a1_vector,Fa1_vector))
+
+        #link b1
+        force_balance_b1x = F_g3x + F_b1x
+        force_balance_b1y = F_g3y + F_b1y
+        constraint_b1 = F_b1 + F_b1_
+
         #link t1
-        force_balance_t1x = -F_b1x + F_b2x + F_t1x
-        force_balance_t1y = -F_b1y + F_b2y + F_t1y
+        force_balance_t1x = F_b1x_ + F_t2x + F_t1x
+        force_balance_t1y = F_b1y_ + F_t2y + F_t1y
+        # print("t1_vec")
+        # print(t1_vector)
+        # print("t2_vec")
+        # print(t2_vector)
         torque_balance_t1 = spvec.dot(N.k,
-                                      spvec.cross(t1_vector,Fb1_vector)) + spvec.dot(N.k,
-                                      spvec.cross(t2_vector,Fb2_vector))                                           
+                                      spvec.cross(t1_vector,Fb1_vector_)) + spvec.dot(N.k,
+                                      spvec.cross(t2_vector,Ft2_vector))
+        constraint_Ft1x = F_t1x + F_t1x_
+        constraint_Ft1y = F_t1y + F_t1y_
+        constraint_Ft2 = F_t2 + F_t2_
+
+        #link b2
+        force_balance_b2x =  F_t2x_ + F_b2x
+        force_balance_b2y = F_t2y_ + F_b2y
+        constraint_b2 = F_b2_ + F_b2
+
+        #link a2
+        #can be simplified out, but included for visualization purposes
+        force_balance_a2x = F_a1x_ + F_a2x
+        force_balance_a2y = F_a1y_ + F_a2y
+        print(force_balance_a2x)
+        #constraint that forces are alligned with link vector applied above
 
         #link l2
         a3_vec = (self.link_a3[:,1] - self.link_a3[:,0])
         a3_vector = N.i*a3_vec[0] + N.j*a3_vec[1]
         Fl2_vector = N.i*F_l2x + N.j*F_l2y
-        force_balance_l2x = -F_a2x + -F_l1x + F_l2x
-        force_balance_l2y = -F_a2y + -F_l1y + F_l2y
-        torque_balance_l2 = spvec.dot(N.k,spvec.cross(a3_vector,-Fa2_vector) + spvec.cross(l2_vector,Fl2_vector))
+        force_balance_l2x = F_a2x_ + F_l1x_ + F_l2x
+        force_balance_l2y = F_a2y_ + F_l1y_ + F_l2y
+        torque_balance_l2 = spvec.dot(N.k,spvec.cross(a3_vector,Fa2_vector_) + spvec.cross(l2_vector,Fl2_vector))
+        constraint_Fl2x = F_l2x + F_l2x_
+        constraint_Fl2y = F_l2y + F_l2y_
+        print(torque_balance_l2)
 
         #link ee
         Fee_vector = F_eex*N.i + F_eey*N.j
-        force_balance_eex = -F_l2x + -F_b2x + F_eex
-        force_balance_eey = -F_l2y + -F_b2y + F_eey
+        force_balance_eex = F_l2x_ + F_b2x_ + F_eex
+        force_balance_eey = F_l2y_ + F_b2y_ + F_eey
         torque_balance_ee = spvec.dot(N.k,
-                                      spvec.cross(e1_vector,Fb2_vector)) + spvec.dot(N.k,
+                                      spvec.cross(e1_vector,Fb2_vector_)) + spvec.dot(N.k,
                                       spvec.cross(e2_vector,Fee_vector))
         # print(torque_balance_l2)
-        equations = [force_balance_l1x,
-                     force_balance_l1y,
-                     torque_balance_l1,
-                     force_balance_a1x,
-                     force_balance_a1y,
-                     torque_balance_a1,
-                     force_balance_l2x,
-                     force_balance_l2y,
-                     torque_balance_l2,
-                     ]
+        equations = [
+                    force_balance_l1x,
+                    force_balance_l1y,
+                    torque_balance_l1,
+                    constraint_l1x,
+                    constraint_l1y,
+                    force_balance_a1x,
+                    force_balance_a1y,
+                    torque_balance_a1,
+                    constraint_Fa1,
+                    force_balance_a2x,
+                    force_balance_a2y,
+                    constraint_Fa2,
+                    force_balance_l2x,
+                    force_balance_l2y,
+                    torque_balance_l2,
+                    constraint_Ft1x,
+                    constraint_Ft1y,
+                    ]
         if not simple:
-            equations = equations + [force_balance_eex,
+            equations = equations + [
+                                    force_balance_eex,
                                     force_balance_eey,
                                     torque_balance_ee,
                                     force_balance_t1x,
                                     force_balance_t1y,
-                                    torque_balance_t1,]
+                                    torque_balance_t1,
+                                    constraint_Ft2,
+                                    force_balance_b1x,
+                                    force_balance_b1y,
+                                    constraint_b1,
+                                    force_balance_b2x,
+                                    force_balance_b2y,
+                                    constraint_b2,
+                                    constraint_Fl2x,
+                                    constraint_Fl2y,
+                                    ]
         #solve system of equations
+        print(equations)
         result = sp.solve(equations)
         print(result)
 
         results = {}
         results["F_l1"] = np.array([result[F_l1x],result[F_l1y]], dtype = float)
+        results["F_l1_"] = np.array([result[F_l1x_],result[F_l1y_]], dtype = float)
         if simple:
             results["F_l2"] = np.array([float(F_l2x),float(F_l2y)], dtype = float)
+            results["F_t1"] = np.array([F_t1x,F_t1y], dtype = float)
+            results["F_t1_"] = np.array([F_t1x_,F_t1y_], dtype = float)
         else:
             results["F_l2"] = np.array([result[F_l2x],result[F_l2y]], dtype = float)
+            results["F_l2_"] = np.array([result[F_l2x_],result[F_l2y_]], dtype = float)
+            results["F_g3"] = np.array(result[F_g3] * b1_hat.reshape(-1)[:2], dtype = float)
             results["F_b1"] = np.array(result[F_b1] * b1_hat.reshape(-1)[:2], dtype = float)
+            results["F_b1_"] = np.array(result[F_b1_] * b1_hat.reshape(-1)[:2], dtype = float)
             results["F_b2"] = np.array(result[F_b2] * b2_hat.reshape(-1)[:2], dtype = float)
+            results["F_b2_"] = np.array(result[F_b2_] * b2_hat.reshape(-1)[:2], dtype = float)
             results["F_t1"] = np.array([result[F_t1x],result[F_t1y]], dtype = float)
+            results["F_t1_"] = np.array([result[F_t1x_],result[F_t1y_]], dtype = float)
+            results["F_t2"] = np.array(result[F_t2] * b2_hat.reshape(-1)[:2], dtype = float)
+            results["F_t2_"] = np.array(result[F_t2_] * b2_hat.reshape(-1)[:2], dtype = float)
             results["F_ee"] = np.array([float(F_eex),float(F_eey)], dtype = float)
         results["F_g1"] = np.array([result[F_g1x],result[F_g1y]], dtype = float)
         results["F_g2"] = np.array([result[F_g2x],result[F_g2y]], dtype = float)
+        results["F_a1"] = np.array(result[F_a1] * a2_hat.reshape(-1)[:2], dtype = float)
+        results["F_a1_"] = np.array(result[F_a1_] * a2_hat.reshape(-1)[:2], dtype = float)
         results["F_a2"] = np.array(result[F_a2] * a2_hat.reshape(-1)[:2], dtype = float)
+        results["F_a2_"] = np.array(result[F_a2_] * a2_hat.reshape(-1)[:2], dtype = float)
         results["T1"] = float(result[T1])
         results["T2"] = float(result[T2])
-
-        upper_arm_link_to_forces = ["F_l1", "F_g1", "T1"]
-        forearm_link_to_forces = ["F_l1", "F_a2", "F_l2",]
-        a1_link_to_forces = ["T2","F_a2"]
-        a2_link_to_forces = ["F_a2"]#need to flesh this out
+        print(results)
         
+        upper_arm_link_to_forces = ["F_l1", "F_g1", "T1","F_t1_"]
+        forearm_link_to_forces = ["F_l1_", "F_a2_", "F_l2"]
+        a1_link_to_forces = ["T2","F_a1","F_g2"]
+        a2_link_to_forces = ["F_a2","F_a1_"]#need to flesh this out
+        upper_arm_grounded_link_forces = ["F_g3","F_b1"]
+        forearm_grounded_link_forces = ["F_t2_","F_b2"]
+        triangle_forces = ["F_t1","F_t2","F_b1_"]
+        ee_forces = ["F_ee", "F_b2_", "F_l2_"]
+
         self.forces_per_link = {
             self.link_names[0]:upper_arm_link_to_forces,
             self.link_names[1]:a1_link_to_forces,
             self.link_names[2]:a2_link_to_forces,
-            self.link_names[3]:forearm_link_to_forces
+            self.link_names[3]:forearm_link_to_forces,
+            self.link_names[4]:upper_arm_grounded_link_forces,
+            self.link_names[5]:triangle_forces,
+            self.link_names[6]:forearm_grounded_link_forces,
+            self.link_names[7]:ee_forces,
         }
         # print("Torque Balance")
         # print(f"F_l1x = {result[F_l1x]}")
@@ -597,52 +715,60 @@ class linkage_robot():
             fig, axes = plt.subplots(2,2)
         else:
             nplots = 8
-            fig, axes = plt.subplots(4,2)
+            fig1, axes1 = plt.subplots(2,2)
+            fig2, axes2 = plt.subplots(2,2)
+            axes = np.vstack((axes1,axes2))
         
         scale = 0.0005
 
         for i, ax in enumerate(axes.reshape(-1)):
+            if i==nplots:
+                continue
             ax.set_title(self.link_names[i])
             self.plot_robot(ax, simple = simple, colors = 'lightgray')
             #highlight link
             for l in self.link_names_to_link_objects[i]:
                 self.plot_link(self.links[l],ax,color = "darkblue")
-            #add forces
-            forces = self.forces_per_link[self.link_names[i]]
-            for force in forces:
-                
-                if force[0]=="T":
-                    torque = results[force]
-                    torque_location = self.force_locations[force][:2]
-                    torque_link = self.links['l1']
-                    self.draw_torque(ax, torque_link, torque, 0, text=f"{torque:.1f}Nm")
-                    continue
 
-                scalar_force = np.linalg.norm(results[force])
-                # print(force)
-                # print(self.force_locations[force])
-                # print(results[force] * scale)
-                force_location = self.force_locations[force][:2]
-                scaled_force_vector = results[force] * scale
-                force_arrow_endpoint = force_location + scaled_force_vector
-                
-                self.draw_arrow(ax, 
-                                force_location,
-                                force_arrow_endpoint,
-                                text=f"{scalar_force:.1f}N")
+                #add forces
+                forces = self.forces_per_link[self.link_names[i]]
+                for force in forces:
+                    
+                    if force[0]=="T":
+                        torque = results[force]
+                        # torque_location = self.force_locations[force][:2]
+                        torque_link = self.links[l]
+                        # torque_link = self.links['l1']
+                        self.draw_torque(ax, torque_link, torque, 0, text=f"{torque:.1f}Nm")
+                        continue
+
+                    scalar_force = np.linalg.norm(results[force])
+                    # print(force)
+                    # print(self.force_locations[force])
+                    # print(results[force] * scale)
+                    force_location = self.force_locations[force][:2]
+                    scaled_force_vector = results[force] * scale
+                    force_arrow_endpoint = force_location + scaled_force_vector
+                    if scalar_force < 0.01:
+                        continue
+                    self.draw_arrow(ax, 
+                                    force_location,
+                                    force_arrow_endpoint,
+                                    text=f"{scalar_force:.1f}N")
 
             self.update_plot_lims(ax)
 # joint1_angle = 0
 # joint2_angle = -np.pi/2
 
 robot = linkage_robot()
-robot.calculate_kinematics([np.pi/4,0.0])
+robot.calculate_kinematics([np.pi/4,-np.pi/4])
+simple = False
 # robot.calculate_kinematics([np.pi/4,-np.pi/4])
 # robot.calculate_kinematics([0,-np.pi/2])
-results = robot.calculate_static_loads( simple = True)
+results = robot.calculate_static_loads( simple = simple)
 fig, ax = plt.subplots()
-robot.plot_robot(ax, simple=True)
-robot.plot_ee_load(ax,results, simple = True)
+robot.plot_robot(ax, simple=simple)
+robot.plot_ee_load(ax,results, simple = simple)
 # robot.draw_arrow(ax,(0,0),(0.5,0.5),)
-robot.plot_link_loads(results = results, simple = True)
+robot.plot_link_loads(results = results, simple = simple)
 plt.show()

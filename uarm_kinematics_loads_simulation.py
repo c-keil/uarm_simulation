@@ -6,10 +6,14 @@ import matplotlib.patches as patches
 from matplotlib.patches import ArrowStyle
 import sympy as sp
 import sympy.vector as spvec
+from sympy import lambdify
 from scipy.spatial.transform import Rotation as R
 from copy import deepcopy
 
 class linkage_robot():
+    #origin
+    World = spvec.CoordSys3D('World')
+
     #define robot parameters
     l1 = 0.5
     l2 = 0.5
@@ -143,7 +147,19 @@ class linkage_robot():
                 self.y_window[1] = point[1] + inflate
         except:
             pass
-
+    
+    def forward_kinematics(self,joint_angles, simple = True, full_state = False):
+        '''Calcualtes forward kinematics for the arm
+        joint_angles'''
+        if not hasattr(self, 'fk_'):
+            theta_1, theta_2 = sp.symbols(('theta_1','theta_2'))
+            l1_vec = self.l1* sp.Matrix([sp.cos(theta_1), sp.sin(theta_1), 0])
+            l2_vec = self.l2* sp.Matrix([-sp.cos(theta_2), -sp.sin(theta_2), 0])
+            wrist_pos = l1_vec + l2_vec
+            self.fk_ = lambdify([theta_1, theta_2], wrist_pos)
+        
+        return self.fk_(joint_angles[0],joint_angles[1])
+    
     def calculate_kinematics(self, joint_angles = None):
         if not joint_angles is None:
             self.joint_angles = joint_angles
@@ -151,7 +167,9 @@ class linkage_robot():
         #calcualte positons for main arm
         self.link_l1 = np.array([[0,0,0],[self.l1*np.cos(self.joint_angles[0]), self.l1*np.sin(self.joint_angles[0]), 0]]).T
         self.links['l1'] = self.link_l1
-        self.link_a1 = np.array([[0,0,0],[-self.a1*np.cos(-self.joint_angles[1]), self.a1*np.sin(-self.joint_angles[1]), 0]]).T
+        self.link_a1 = np.array([[0,0,0],
+                                 [-self.a1*np.cos(-self.joint_angles[1]), 
+                                  self.a1*np.sin(-self.joint_angles[1]), 0]]).T
         self.links['a1'] = self.link_a1
     
         self.link_a3 = self.link_a1 + self.link_l1[:,1].reshape(-1,1)
@@ -762,6 +780,7 @@ class linkage_robot():
 
 robot = linkage_robot()
 robot.calculate_kinematics([np.pi/4,-np.pi/4])
+print(robot.forward_kinematics([np.pi/4,-np.pi/4]))
 simple = False
 # robot.calculate_kinematics([np.pi/4,-np.pi/4])
 # robot.calculate_kinematics([0,-np.pi/2])

@@ -6,9 +6,12 @@ import matplotlib.patches as patches
 from matplotlib.patches import ArrowStyle
 import sympy as sp
 import sympy.vector as spvec
+# from sympy import solve
 from sympy import lambdify
 from scipy.spatial.transform import Rotation as R
 from copy import deepcopy
+
+from analytical_ik import IK
 
 class linkage_robot():
     #origin
@@ -160,6 +163,18 @@ class linkage_robot():
         
         return self.fk_(joint_angles[0],joint_angles[1])
     
+    def inverse_kinematics(self,pos,simple = True):
+        '''Calculates joint angles given the wrist position'''
+        try:
+            sol1, sol2 = IK(pos[0],pos[1],self.l1,self.l2)
+        except ValueError:
+            return [np.nan, np.nan]
+        
+        if sol1[0] >= 0:
+            return np.array(sol1)
+        else:
+            return np.array(sol2)
+
     def calculate_kinematics(self, joint_angles = None):
         if not joint_angles is None:
             self.joint_angles = joint_angles
@@ -352,7 +367,7 @@ class linkage_robot():
     # def plot_link_loads(self, results = None):
     #     pass
 
-    def calculate_static_loads(self, simple = False):
+    def calculate_static_loads(self, ee_load = None, torques = None, simple = False):
         '''calculate the max static loads in all links.
         defines a system of equations for the loads in each link assuming 
         the end effector is pinned in place, able to resist any applied load'''
@@ -375,15 +390,19 @@ class linkage_robot():
         else:
             F_g3,F_g3_,F_b1,F_b1_,F_b2,F_b2_ = 0,0,0,0,0,0
             F_t1x,F_t1y,F_t1x_,F_t1y_,F_t2,F_t2_,F_eex,F_eey, = 8*(0,)
-            
         
-        # T1, T2 = 32, 32
-        if simple:
-            F_l2x = 0
-            F_l2y = -50
+        if not torques is None:
+            raise NotImplementedError
+        
+        if ee_load is None:
+            raise NotImplementedError
         else:
-            F_eex = 0
-            F_eey = -50
+            if simple:
+                F_l2x = ee_load[0]
+                F_l2y = ee_load[1]
+            else:
+                F_eex = ee_load[0]
+                F_eey = ee_load[1]
 
         #vectors
         l1_vec = (self.link_l1[:,1] - self.link_l1[:,0])
@@ -530,7 +549,7 @@ class linkage_robot():
         #can be simplified out, but included for visualization purposes
         force_balance_a2x = F_a1x_ + F_a2x
         force_balance_a2y = F_a1y_ + F_a2y
-        print(force_balance_a2x)
+        # print(force_balance_a2x)
         #constraint that forces are alligned with link vector applied above
 
         #link l2
@@ -542,7 +561,7 @@ class linkage_robot():
         torque_balance_l2 = spvec.dot(N.k,spvec.cross(a3_vector,Fa2_vector_) + spvec.cross(l2_vector,Fl2_vector))
         constraint_Fl2x = F_l2x + F_l2x_
         constraint_Fl2y = F_l2y + F_l2y_
-        print(torque_balance_l2)
+        # print(torque_balance_l2)
 
         #link ee
         Fee_vector = F_eex*N.i + F_eey*N.j
@@ -590,9 +609,9 @@ class linkage_robot():
                                     constraint_Fl2y,
                                     ]
         #solve system of equations
-        print(equations)
+        # print(equations)
         result = sp.solve(equations)
-        print(result)
+        # print(result)
 
         results = {}
         results["F_l1"] = np.array([result[F_l1x],result[F_l1y]], dtype = float)
@@ -622,7 +641,7 @@ class linkage_robot():
         results["F_a2_"] = np.array(result[F_a2_] * a2_hat.reshape(-1)[:2], dtype = float)
         results["T1"] = float(result[T1])
         results["T2"] = float(result[T2])
-        print(results)
+        # print(results)
         
         upper_arm_link_to_forces = ["F_l1", "F_g1", "T1","F_t1_"]
         forearm_link_to_forces = ["F_l1_", "F_a2_", "F_l2"]
@@ -777,17 +796,20 @@ class linkage_robot():
             self.update_plot_lims(ax)
 # joint1_angle = 0
 # joint2_angle = -np.pi/2
+if __name__ == "__main__":
 
-robot = linkage_robot()
-robot.calculate_kinematics([np.pi/4,-np.pi/4])
-print(robot.forward_kinematics([np.pi/4,-np.pi/4]))
-simple = False
-# robot.calculate_kinematics([np.pi/4,-np.pi/4])
-# robot.calculate_kinematics([0,-np.pi/2])
-results = robot.calculate_static_loads( simple = simple)
-fig, ax = plt.subplots()
-robot.plot_robot(ax, simple=simple)
-robot.plot_ee_load(ax,results, simple = simple)
-# robot.draw_arrow(ax,(0,0),(0.5,0.5),)
-robot.plot_link_loads(results = results, simple = simple)
-plt.show()
+    robot = linkage_robot()
+    robot.calculate_kinematics([np.pi/4,-np.pi/4])
+    print(robot.forward_kinematics([np.pi/4,-np.pi/4]))
+    print(robot.inverse_kinematics(np.array([0,0])))
+    # print(robot.inverse_kinematics(np.array([0.5,0])))
+    simple = False
+    # robot.calculate_kinematics([np.pi/4,-np.pi/4])
+    # robot.calculate_kinematics([0,-np.pi/2])
+    results = robot.calculate_static_loads( ee_load = [0,10], simple = simple)
+    fig, ax = plt.subplots()
+    robot.plot_robot(ax, simple=simple)
+    robot.plot_ee_load(ax,results, simple = simple)
+    # robot.draw_arrow(ax,(0,0),(0.5,0.5),)
+    robot.plot_link_loads(results = results, simple = simple)
+    plt.show()

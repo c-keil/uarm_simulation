@@ -10,7 +10,7 @@ def theta_1(xee, yee, theta2, l1, l2):
     return theta1
 
 def IK(xee, yee, l1, l2):
-    theta2_1, theta2_2 = theta_2(xee, yee)
+    theta2_1, theta2_2 = theta_2(xee, yee, l1, l2)
     theta1_1 = theta_1(xee, yee, theta2_1, l1, l2)
     theta1_2 = theta_1(xee, yee, theta2_2, l1, l2)
     return [theta1_1, theta2_1], [theta1_2, theta2_2]

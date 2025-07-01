@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import pickle
 
 # import matplotlib.axes.Axes as Axes
 from matplotlib.patches import ArrowStyle
@@ -13,9 +14,13 @@ from copy import deepcopy
 
 from analytical_ik import IK
 
+def mat2vec(mat,coord_sys):
+    return coord_sys.i*mat[0,0] + coord_sys.j*mat[1,0] + coord_sys.k*mat[2,0]
+
 class linkage_robot():
     #origin
     World = spvec.CoordSys3D('World')
+    Base = spvec.CoordSys3D('Base')
 
     #define robot parameters
     l1 = 0.5
@@ -34,11 +39,13 @@ class linkage_robot():
     b1_base = None
     t1 = 0.13
     t2 = 0.1
-    t_12_angle = np.radians(-90)
     t1_start_angle = np.radians(135)
+    t2_start_angle = np.radians(45)
+    t_12_angle = t2_start_angle - t1_start_angle
 
     #ee_link
     e1 = t2
+    e2_angle = 0
     e_12_angle = np.radians(-45)
     e2 = e1*np.cos(e_12_angle)
 
@@ -156,7 +163,7 @@ class linkage_robot():
         '''Calcualtes forward kinematics for the arm
         joint_angles'''
         
-        return self.fk_simple_(joint_angles[0],joint_angles[1])
+        return self.wrist_fk(joint_angles[0],joint_angles[1])
     
     def inverse_kinematics(self,pos,simple = True):
         '''Calculates joint angles given the wrist position'''
@@ -221,29 +228,115 @@ class linkage_robot():
 
     def symbolic_forward_kinematics(self):
         '''returns the symbolic formulas for all links'''
-        l1,l2,theta1,theta2, = sp.symbols(('l1','l2','theta1','theta2',))
-        a1,a2,a3 = sp.symbols(('a1','a2','a3'))
-        b1, b2 = sp.symbols(('b1','b2'))
-        t1,t2,t3 = sp.symbols(('t1','t2','t3'))
-        e1,e2,e3 = sp.symbols(('e1','e2','e3'))
 
-        #simple forward kinematics
-        origin = sp.Matrix([0,0,0])
-        l1_vec = l1* sp.Matrix([sp.cos(theta1), 0, sp.sin(theta1)])
-        l2_vec = l2* sp.Matrix([-sp.cos(theta2), 0, -sp.sin(theta2)])
-        wrist_pos = l1_vec + l2_vec
+        #coordsys
+        B = self.Base
+        origin = 0*(B.i + B.j + B.k)
+        self.symbolic_links = {}
+        self.symbolic_vectors = {}
+        #symbols
+        #makes assumptions a1=a3 etc.
+        s1 = l1,l2,theta1,theta2, = sp.symbols(('l1','l2','theta1','theta2',))
+        s2 = a1,a2,a3 = sp.symbols(('a1','a2','a3'))
+        s3 = b1, b2 = sp.symbols(('b1','b2'))
+        s4 = t1,t2,t3,t1_init_angle,t2_init_angle = sp.symbols(('t1','t2','t3','t1_init_angle','t2_init_angle'))
+        s5 = e1,e2,e3,e2_angle = sp.symbols(('e1','e2','e3','e2_angle'))
+        
+        self.kinematic_symbols = s1 + s2 + s3 + s4 + s5
+        substitutions = {
+                        l1:self.l1,
+                        l2:self.l2,
+                        a1:self.a1,
+                        t1:self.t1,
+                        t2:self.t2,
+                        t1_init_angle:self.t1_start_angle,
+                        t2_init_angle:self.t2_start_angle,
+                        e2:self.e2,
+                        e2_angle:self.e2_angle
+                        }
+        self.substitutions = substitutions
 
-        self.l1_vec_s = l1_vec
-        self.l2_vec_s = l2_vec
-        self.l1_s = sp.Matrix.hstack(origin,l1_vec)
+        #basic links
+        l1_vec = l1*(B.j*sp.cos(theta1) +B.k*sp.sin(theta1))
+        self.symbolic_vectors['l1'] = l1_vec
+        l1_link = sp.Matrix.hstack(origin.to_matrix(B),l1_vec.to_matrix(B))
+        self.symbolic_links['l1'] = l1_link
 
-        self.fk_simple_ = lambdify([theta1, theta2], wrist_pos)
-    
+        l2_vec = l2*(B.j*sp.cos(theta2) +B.k*sp.sin(theta2))
+        self.symbolic_vectors['l2'] = l2_vec
+        wrist_vec = (l1_vec + l2_vec)
+        l2_link = sp.Matrix.hstack(l1_vec.to_matrix(B),wrist_vec.to_matrix(B))
+        self.symbolic_links['l2'] = l2_link
+        wrist_pos = wrist_vec.to_matrix(B)
+
+        #make fk function
+        self.wrist_fk = sp.lambdify([theta1, theta2], wrist_pos.subs(substitutions))
+
+        a1_vec = 0*B.i  + B.j*a1*sp.cos(sp.pi+theta2) + B.k*a1*sp.sin(sp.pi + theta2)
+        self.symbolic_vectors['a1'] = a1_vec
+        a1_link = sp.Matrix.hstack(origin.to_matrix(B),a1_vec.to_matrix(B))
+        self.symbolic_links['a1'] = a1_link
+
+        a2_vec = l1_vec
+        self.symbolic_vectors['a2'] = a2_vec
+        a2_link = sp.Matrix.hstack(a1_link[:,1], a1_link[:,1] + a2_vec.to_matrix(B))
+        self.symbolic_links['a2'] = a2_link
+        
+        a3_vec = a1_vec
+        self.symbolic_vectors['a3'] = a3_vec
+        a3_link = sp.Matrix.hstack(l1_link[:,-1], l1_link[:,-1] + a3_vec.to_matrix(B))
+        self.symbolic_links['a3'] = a3_link
+
+        # calcualte grounded linkage positions
+        b1_base_point = sp.Matrix([0,t1*sp.cos(t1_init_angle), t1*sp.sin(t1_init_angle)])
+        b1_vec = a2_vec
+        self.symbolic_vectors['b1'] = b1_vec
+        b1_link = sp.Matrix.hstack(b1_base_point,b1_base_point+b1_vec.to_matrix(B))
+        self.symbolic_links['b1'] = b1_link
+
+        t1_link = sp.Matrix.hstack(l1_link[:,-1],b1_link[:,-1])
+        t1_vec = mat2vec(t1_link[:,-1]-t1_link[:,0], B)
+        self.symbolic_vectors['t1'] = t1_vec
+        self.symbolic_links['t1'] = t1_link
+
+        t2_vec = t2*(B.j*sp.cos(t2_init_angle) + B.k*sp.sin(t2_init_angle))
+        self.symbolic_vectors['t2'] = t2_vec
+        t2_link = sp.Matrix.hstack(l1_link[:,-1],l1_link[:,-1]+t2_vec.to_matrix(B))
+        self.symbolic_links['t2'] = t2_link
+        t3_link = sp.Matrix.hstack(t1_link[:,-1],t2_link[:,-1])
+        self.symbolic_links['t3'] = t3_link
+
+        b2_vec = l2_vec
+        b2_link = sp.Matrix.hstack(t2_link[:,-1],t2_link[:,-1]+b2_vec.to_matrix(B))
+        self.symbolic_links['b2'] = b2_link
+        self.symbolic_vectors['b2'] = b2_vec
+        
+        e1_link = sp.Matrix.hstack(l2_link[:,-1],b2_link[:,-1])
+        e1_vec = mat2vec(e1_link[:,-1]-e1_link[:,0],B)
+        e2_vec = e2*(B.j*sp.cos(e2_angle) + B.k*sp.sin(e2_angle))
+        e2_link = sp.Matrix.hstack(l2_link[:,-1],l2_link[:,-1] + e2_vec.to_matrix(B))
+        e3_link = sp.Matrix.hstack(e2_link[:,-1], e1_link[:,-1])
+        self.symbolic_links['ee1'] = e1_link
+        self.symbolic_links['ee2'] = e2_link
+        self.symbolic_links['ee3'] = e3_link
+        self.symbolic_vectors['ee1'] = e1_vec
+        self.symbolic_vectors['ee2'] = e2_vec
+
+        #make non symbolic link calculations
+        self.link_lambdas = {}
+        for key in self.symbolic_links.keys():
+            self.link_lambdas[key] = sp.lambdify([theta1, theta2], self.symbolic_links[key].subs(substitutions))
+
     def plot_link(self, link, ax, color = 'b'):
         ax.plot(link[0,:],link[1,:],color)
     
-    def plot_robot(self, ax, simple = False, colors = None):
+    def plot_link2D(self, link_name, joint_pos, ax, color = 'b'):
+        theta1 = joint_pos[0]
+        theta2 = joint_pos[1]
+        link_coords = self.link_lambdas[link_name](theta1,theta2)
+        ax.plot(link_coords[1,:],link_coords[2,:],color)
 
+    def plot_robot(self, ax, joint_positions, simple = False, colors = None):
         ax.axis('equal')
         if colors is None:
             colors = self.link_colors
@@ -254,11 +347,14 @@ class linkage_robot():
                 colors = self.link_colors | colors
 
         for link in self.simple_links:
-            self.plot_link(self.links[link],ax,color = colors[link])
+            self.plot_link2D(link, joint_positions, ax, colors[link])
+            # self.plot_link(self.link_lambdas[link](np.pi/4,-np.pi/4),ax,color = colors[link])
+            # self.plot_link(self.links[link],ax,color = colors[link])
 
         if not simple:
             for link in self.grounded_links:
-                self.plot_link(self.links[link],ax,color = colors[link])
+                self.plot_link2D(link, joint_positions, ax, colors[link])
+                # self.plot_link(self.links[link],ax,color = colors[link])
             
         self.update_plot_lims(ax) #does not handle plot resizing well
 
@@ -353,7 +449,7 @@ class linkage_robot():
                    'F_l2x','F_l2y',
                    'F_l2x_','F_l2y_',))
         F_a1,F_a2,F_a1_,F_a2_,= sp.symbols(('F_a1', 'F_a2','F_a1_', 'F_a2_',))
-        l1x,l1y,l2x,l2y = sp.symbols(('l1x','l1y','l2x','l2y'))
+        # l1x,l1y,l2x,l2y = sp.symbols(('l1x','l1y','l2x','l2y'))
         if not simple:
             F_g3,F_g3_,F_b1,F_b1_,F_b2,F_b2_ = sp.symbols(('F_g3','F_g3_','F_b1','F_b1_','F_b2','F_b2_',))
             F_t1x,F_t1y,F_t1x_,F_t1y_,F_t2,F_t2_,F_eex,F_eey, = sp.symbols(('F_t1x','F_t1y',
@@ -363,86 +459,99 @@ class linkage_robot():
         else:
             F_g3,F_g3_,F_b1,F_b1_,F_b2,F_b2_ = 0,0,0,0,0,0
             F_t1x,F_t1y,F_t1x_,F_t1y_,F_t2,F_t2_,F_eex,F_eey, = 8*(0,)
-        
+        B = self.Base
+
         #vectors
-        l1_vec = (self.link_l1[:,1] - self.link_l1[:,0])
-        l2_vec = (self.link_l2[:,1] - self.link_l2[:,0])
-        a1_vec = (self.link_a1[:,1] - self.link_a1[:,0])
-        a2_vec = (self.link_a2[:,1] - self.link_a2[:,0])
-        a2_hat = a2_vec / np.linalg.norm(a2_vec)
+        l1_vec = self.symbolic_vectors['l1']
+        # l1_vec = (self.link_l1[:,1] - self.link_l1[:,0])
+        l2_vec = self.symbolic_vectors['l2']
+        # l2_vec = (self.link_l2[:,1] - self.link_l2[:,0])
+        a1_vec = self.symbolic_vectors['a1']
+        # a1_vec = (self.link_a1[:,1] - self.link_a1[:,0])
+        a2_vec = self.symbolic_vectors['a2']
+        # a2_vec = (self.link_a2[:,1] - self.link_a2[:,0])
+        a2_hat = a2_vec / a2_vec.magnitude()
         
-        b1_vec = self.link_b1[:,1] - self.link_b1[:,0]
-        b2_vec = self.link_b2[:,1] - self.link_b2[:,0]
-        b1_hat = b1_vec/np.linalg.norm(b1_vec)
-        b2_hat = b2_vec/np.linalg.norm(b2_vec)
-        e1_vec = self.link_ee1[:,1] - self.link_ee1[:,0]
-        e2_vec = self.link_ee2[:,1] - self.link_ee2[:,0]
-        t1_vec = self.link_t1[:,1] - self.link_t1[:,0]
-        t2_vec = self.link_t2[:,1] - self.link_t2[:,0]
+        b1_vec = self.symbolic_vectors['b1']
+        b1_hat = b1_vec / b1_vec.magnitude()
+        # b1_vec = self.link_b1[:,1] - self.link_b1[:,0]
+        b2_vec = self.symbolic_vectors['b2']
+        b2_hat = b2_vec / b2_vec.magnitude()
+        # b2_vec = self.link_b2[:,1] - self.link_b2[:,0]
+        # b1_hat = b1_vec/np.linalg.norm(b1_vec)
+        # b2_hat = b2_vec/np.linalg.norm(b2_vec)
+        e1_vec = self.symbolic_vectors['ee1']
+        e2_vec = self.symbolic_vectors['ee2']
+        t1_vec = self.symbolic_vectors['t1']
+        t2_vec = self.symbolic_vectors['t2']
+        # e1_vec = self.link_ee1[:,1] - self.link_ee1[:,0]
+        # e2_vec = self.link_ee2[:,1] - self.link_ee2[:,0]
+        # t1_vec = self.link_t1[:,1] - self.link_t1[:,0]
+        # t2_vec = self.link_t2[:,1] - self.link_t2[:,0]
         # e1_hat = e1_vec/np.linalg.norm(e1_vec)
 
-        l1_vector = self.World.i*l1_vec[0] + self.World.j*l1_vec[1]
-        l2_vector = self.World.i*l2_vec[0] + self.World.j*l2_vec[1]
-        a1_vector = self.World.i*a1_vec[0] + self.World.j*a1_vec[1]
-        b1_vector = self.World.i*b1_vec[0] + self.World.j*b1_vec[1]
-        b2_vector = self.World.i*b2_vec[0] + self.World.j*b2_vec[1]
-        t1_vector = self.World.i*t1_vec[0] + self.World.j*t1_vec[1]
-        t2_vector = self.World.i*t2_vec[0] + self.World.j*t2_vec[1]
-        b1_vector_hat = b1_vector/sp.sqrt(b1_vector.dot(b1_vector))
-        b2_vector_hat = b2_vector/sp.sqrt(b2_vector.dot(b2_vector))
-        Fl1_vector = self.World.i*F_l1x + self.World.j*F_l1y
-        Ft1_vector = self.World.i*F_t1x + self.World.j*F_t1y
-        Ft1_vector_ = self.World.i*F_t1x_ + self.World.j*F_t1y_
-        e1_vector = self.World.i*e1_vec[0] + self.World.j*e1_vec[1]
-        e2_vector = self.World.i*e2_vec[0] + self.World.j*e2_vec[1]
+        # l1_vec = B.i*l1_vec[0] + B.j*l1_vec[1]
+        # l2_vec = B.i*l2_vec[0] + B.j*l2_vec[1]
+        # a1_vec = B.i*a1_vec[0] + B.j*a1_vec[1]
+        # b1_vec = B.i*b1_vec[0] + B.j*b1_vec[1]
+        # b2_vec = B.i*b2_vec[0] + B.j*b2_vec[1]
+        # t1_vec = B.i*t1_vec[0] + B.j*t1_vec[1]
+        # t2_vec = B.i*t2_vec[0] + B.j*t2_vec[1]
+        # b1_vec_hat = b1_vec/sp.sqrt(b1_vec.dot(b1_vec))
+        # b2_vec_hat = b2_vec/sp.sqrt(b2_vec.dot(b2_vec))
+        Fl1_vec = B.j*F_l1x + B.k*F_l1y
+        Ft1_vec = B.j*F_t1x + B.k*F_t1y
+        Ft1_vec_ = B.j*F_t1x_ + B.k*F_t1y_
+        # e1_vec = B.i*e1_vec[0] + B.j*e1_vec[1]
+        # e2_vec = B.i*e2_vec[0] + B.j*e2_vec[1]
         
         #linakge forces - constraint is only valid for a static scenario
-        F_a1x = F_a1 * a2_hat[0]
-        F_a1y = F_a1 * a2_hat[1]
-        F_a1x_ = F_a1_ * a2_hat[0]
-        F_a1y_ = F_a1_ * a2_hat[1]
+        F_a1x = F_a1 * a2_hat.dot(B.j)
+        F_a1y = F_a1 * a2_hat.dot(B.k)
+        F_a1x_ = F_a1_ * a2_hat.dot(B.j)
+        F_a1y_ = F_a1_ * a2_hat.dot(B.k)
         constraint_Fa1 = F_a1 + F_a1_
 
-        F_a2x = F_a2 * a2_hat[0]
-        F_a2y = F_a2 * a2_hat[1]
-        F_a2x_ = F_a2_ * a2_hat[0]
-        F_a2y_ = F_a2_ * a2_hat[1]
+        F_a2x = F_a2 * a2_hat.dot(B.j)
+        F_a2y = F_a2 * a2_hat.dot(B.k)
+        F_a2x_ = F_a2_ * a2_hat.dot(B.j)
+        F_a2y_ = F_a2_ * a2_hat.dot(B.k)
         constraint_Fa2 = F_a2 + F_a2_
         
 
-        Fa1_vector = self.World.i*F_a1x + self.World.j*F_a1y
-        Fa2_vector = self.World.i*F_a2x + self.World.j*F_a2y
-        Fa2_vector_ = self.World.i*F_a2x_ + self.World.j*F_a2y_
+        Fa1_vec = B.j*F_a1x + B.k*F_a1y
+        Fa2_vec = B.j*F_a2x + B.k*F_a2y
+        Fa2_vec_ = B.j*F_a2x_ + B.k*F_a2y_
         
         #applies implicit constraint that simple links have only axial forces in static configuration
-        Fb1_vector = F_b1*b1_vector_hat
-        Fb1_vector_ = F_b1_*b1_vector_hat
-        F_g3_vector = F_g3*b1_vector_hat
-        F_g3x = F_g3_vector.dot(self.World.i)
-        F_g3y = F_g3_vector.dot(self.World.j)
-        F_b1x = Fb1_vector.dot(self.World.i)
-        F_b1x_ = Fb1_vector_.dot(self.World.i)
-        F_b1y = Fb1_vector.dot(self.World.j)
-        F_b1y_ = Fb1_vector_.dot(self.World.j)
-        Fb2_vector = F_b2*b2_vector_hat
-        Fb2_vector_ = F_b2_*b2_vector_hat
-        Ft2_vector = F_t2*b2_vector_hat
-        Ft2_vector_ = F_t2_*b2_vector_hat
-        F_t2x = Ft2_vector.dot(self.World.i)
-        F_t2y = Ft2_vector.dot(self.World.j)
-        F_t2x_ = Ft2_vector_.dot(self.World.i)
-        F_t2y_ = Ft2_vector_.dot(self.World.j)
-        F_b2x = Fb2_vector.dot(self.World.i)
-        F_b2y = Fb2_vector.dot(self.World.j)
-        F_b2x_ = Fb2_vector_.dot(self.World.i)
-        F_b2y_ = Fb2_vector_.dot(self.World.j)
+        Fb1_vec = F_b1*b1_hat
+        Fb1_vec_ = F_b1_*b1_hat
+        F_g3_vec = F_g3*b1_hat
+        F_g3x = F_g3_vec.dot(B.j)
+        F_g3y = F_g3_vec.dot(B.k)
+        F_b1x = Fb1_vec.dot(B.j)
+        F_b1x_ = Fb1_vec_.dot(B.j)
+        F_b1y = Fb1_vec.dot(B.k)
+        F_b1y_ = Fb1_vec_.dot(B.k)
+        Fb2_vec = F_b2*b2_hat
+        Fb2_vec_ = F_b2_*b2_hat
+        Ft2_vec = F_t2*b2_hat
+        Ft2_vec_ = F_t2_*b2_hat
+        F_t2x = Ft2_vec.dot(B.j)
+        F_t2y = Ft2_vec.dot(B.k)
+        F_t2x_ = Ft2_vec_.dot(B.j)
+        F_t2y_ = Ft2_vec_.dot(B.k)
+        F_b2x = Fb2_vec.dot(B.j)
+        F_b2y = Fb2_vec.dot(B.k)
+        F_b2x_ = Fb2_vec_.dot(B.j)
+        F_b2y_ = Fb2_vec_.dot(B.k)
 
         #link l1
         force_balance_l1x = F_g1x + F_l1x + F_t1x_
         force_balance_l1y = F_g1y + F_l1y + F_t1y_
-        torque_balance_l1 = T1 + spvec.dot(self.World.k,
-                                           spvec.cross(l1_vector,Fl1_vector)) + spvec.dot(self.World.k,
-                                           spvec.cross(l1_vector,Ft1_vector_))
+        torque_balance_l1 = T1 + spvec.dot(B.i,
+                                           spvec.cross(l1_vec,Fl1_vec)) + spvec.dot(B.i,
+                                           spvec.cross(l1_vec,Ft1_vec_))
         constraint_l1x = F_l1x + F_l1x_
         constraint_l1y = F_l1y + F_l1y_
         # print(l1_vector)
@@ -450,7 +559,7 @@ class linkage_robot():
         #link a1
         force_balance_a1x = F_g2x + F_a1x
         force_balance_a1y = F_g2y + F_a1y
-        torque_balance_a1 = T2 + spvec.dot(self.World.k,spvec.cross(a1_vector,Fa1_vector))
+        torque_balance_a1 = T2 + spvec.dot(B.k,spvec.cross(a1_vec,Fa1_vec))
 
         #link b1
         force_balance_b1x = F_g3x + F_b1x
@@ -464,9 +573,9 @@ class linkage_robot():
         # print(t1_vector)
         # print("t2_vec")
         # print(t2_vector)
-        torque_balance_t1 = spvec.dot(self.World.k,
-                                      spvec.cross(t1_vector,Fb1_vector_)) + spvec.dot(self.World.k,
-                                      spvec.cross(t2_vector,Ft2_vector))
+        torque_balance_t1 = spvec.dot(B.i,
+                                      spvec.cross(t1_vec,Fb1_vec_)) + spvec.dot(B.i,
+                                      spvec.cross(t2_vec,Ft2_vec))
         constraint_Ft1x = F_t1x + F_t1x_
         constraint_Ft1y = F_t1y + F_t1y_
         constraint_Ft2 = F_t2 + F_t2_
@@ -484,23 +593,24 @@ class linkage_robot():
         #constraint that forces are alligned with link vector applied above
 
         #link l2
-        a3_vec = (self.link_a3[:,1] - self.link_a3[:,0])
-        a3_vector = self.World.i*a3_vec[0] + self.World.j*a3_vec[1]
-        Fl2_vector = self.World.i*F_l2x + self.World.j*F_l2y
+        a3_vec = self.symbolic_vectors['a3']
+        # a3_vec = (self.link_a3[:,1] - self.link_a3[:,0])
+        # a3_vector = B.i*a3_vec[0] + B.j*a3_vec[1]
+        Fl2_vector = B.j*F_l2x + B.k*F_l2y
         force_balance_l2x = F_a2x_ + F_l1x_ + F_l2x
         force_balance_l2y = F_a2y_ + F_l1y_ + F_l2y
-        torque_balance_l2 = spvec.dot(self.World.k,spvec.cross(a3_vector,Fa2_vector_) + spvec.cross(l2_vector,Fl2_vector))
+        torque_balance_l2 = spvec.dot(B.k,spvec.cross(a3_vec,Fa2_vec_) + spvec.cross(l2_vec,Fl2_vector))
         constraint_Fl2x = F_l2x + F_l2x_
         constraint_Fl2y = F_l2y + F_l2y_
         # print(torque_balance_l2)
 
         #link ee
-        Fee_vector = F_eex*self.World.i + F_eey*self.World.j
+        Fee_vector = F_eex*B.j + F_eey*B.k
         force_balance_eex = F_l2x_ + F_b2x_ + F_eex
         force_balance_eey = F_l2y_ + F_b2y_ + F_eey
-        torque_balance_ee = spvec.dot(self.World.k,
-                                      spvec.cross(e1_vector,Fb2_vector_)) + spvec.dot(self.World.k,
-                                      spvec.cross(e2_vector,Fee_vector))
+        torque_balance_ee = spvec.dot(B.i,
+                                      spvec.cross(e1_vec,Fb2_vec_)) + spvec.dot(B.i,
+                                      spvec.cross(e2_vec,Fee_vector))
         # print(torque_balance_l2)
         equations = [
                     force_balance_l1x,
@@ -541,8 +651,13 @@ class linkage_robot():
                                     ]
         #solve system of equations
         # print(equations)
+        equations = [e.subs(self.substitutions) for e in equations]
         result = sp.solve(equations)
+    
+        print(result)
 
+        with open('solution.p','wb') as f:
+            pickle.dump(result, f)
 
     def calculate_static_loads(self, ee_load = None, torques = None, simple = False):
         '''calculate the max static loads in all links.
@@ -557,7 +672,7 @@ class linkage_robot():
                    'F_l2x','F_l2y',
                    'F_l2x_','F_l2y_',))
         F_a1,F_a2,F_a1_,F_a2_,= sp.symbols(('F_a1', 'F_a2','F_a1_', 'F_a2_',))
-        l1x,l1y,l2x,l2y = sp.symbols(('l1x','l1y','l2x','l2y'))
+        # l1x,l1y,l2x,l2y = sp.symbols(('l1x','l1y','l2x','l2y'))
         if not simple:
             F_g3,F_g3_,F_b1,F_b1_,F_b2,F_b2_ = sp.symbols(('F_g3','F_g3_','F_b1','F_b1_','F_b2','F_b2_',))
             F_t1x,F_t1y,F_t1x_,F_t1y_,F_t2,F_t2_,F_eex,F_eey, = sp.symbols(('F_t1x','F_t1y',
@@ -598,15 +713,15 @@ class linkage_robot():
         t2_vec = self.link_t2[:,1] - self.link_t2[:,0]
         # e1_hat = e1_vec/np.linalg.norm(e1_vec)
 
-        l1_vector = N.i*l1_vec[0] + N.j*l1_vec[1]
-        l2_vector = N.i*l2_vec[0] + N.j*l2_vec[1]
-        a1_vector = N.i*a1_vec[0] + N.j*a1_vec[1]
-        b1_vector = N.i*b1_vec[0] + N.j*b1_vec[1]
-        b2_vector = N.i*b2_vec[0] + N.j*b2_vec[1]
-        t1_vector = N.i*t1_vec[0] + N.j*t1_vec[1]
-        t2_vector = N.i*t2_vec[0] + N.j*t2_vec[1]
-        b1_vector_hat = b1_vector/sp.sqrt(b1_vector.dot(b1_vector))
-        b2_vector_hat = b2_vector/sp.sqrt(b2_vector.dot(b2_vector))
+        l1_vec = N.i*l1_vec[0] + N.j*l1_vec[1]
+        l2_vec = N.i*l2_vec[0] + N.j*l2_vec[1]
+        a1_vec = N.i*a1_vec[0] + N.j*a1_vec[1]
+        b1_vec = N.i*b1_vec[0] + N.j*b1_vec[1]
+        b2_vec = N.i*b2_vec[0] + N.j*b2_vec[1]
+        t1_vec = N.i*t1_vec[0] + N.j*t1_vec[1]
+        t2_vec = N.i*t2_vec[0] + N.j*t2_vec[1]
+        b1_vec_hat = b1_vec/sp.sqrt(b1_vec.dot(b1_vec))
+        b2_vec_hat = b2_vec/sp.sqrt(b2_vec.dot(b2_vec))
         Fl1_vector = N.i*F_l1x + N.j*F_l1y
         Ft1_vector = N.i*F_t1x + N.j*F_t1y
         Ft1_vector_ = N.i*F_t1x_ + N.j*F_t1y_
@@ -634,19 +749,19 @@ class linkage_robot():
         # F_b1x = F_b1 * b1_hat[0]
         # F_b1y = F_b1 * b1_hat[1]
         #applies implicit constraint that simple links have only axial forces in static configuration
-        Fb1_vector = F_b1*b1_vector_hat
-        Fb1_vector_ = F_b1_*b1_vector_hat
-        F_g3_vector = F_g3*b1_vector_hat
+        Fb1_vector = F_b1*b1_vec_hat
+        Fb1_vector_ = F_b1_*b1_vec_hat
+        F_g3_vector = F_g3*b1_vec_hat
         F_g3x = F_g3_vector.dot(N.i)
         F_g3y = F_g3_vector.dot(N.j)
         F_b1x = Fb1_vector.dot(N.i)
         F_b1x_ = Fb1_vector_.dot(N.i)
         F_b1y = Fb1_vector.dot(N.j)
         F_b1y_ = Fb1_vector_.dot(N.j)
-        Fb2_vector = F_b2*b2_vector_hat
-        Fb2_vector_ = F_b2_*b2_vector_hat
-        Ft2_vector = F_t2*b2_vector_hat
-        Ft2_vector_ = F_t2_*b2_vector_hat
+        Fb2_vector = F_b2*b2_vec_hat
+        Fb2_vector_ = F_b2_*b2_vec_hat
+        Ft2_vector = F_t2*b2_vec_hat
+        Ft2_vector_ = F_t2_*b2_vec_hat
         F_t2x = Ft2_vector.dot(N.i)
         F_t2y = Ft2_vector.dot(N.j)
         F_t2x_ = Ft2_vector_.dot(N.i)
@@ -687,8 +802,8 @@ class linkage_robot():
         force_balance_l1x = F_g1x + F_l1x + F_t1x_
         force_balance_l1y = F_g1y + F_l1y + F_t1y_
         torque_balance_l1 = T1 + spvec.dot(N.k,
-                                           spvec.cross(l1_vector,Fl1_vector)) + spvec.dot(N.k,
-                                           spvec.cross(l1_vector,Ft1_vector_))
+                                           spvec.cross(l1_vec,Fl1_vector)) + spvec.dot(N.k,
+                                           spvec.cross(l1_vec,Ft1_vector_))
         constraint_l1x = F_l1x + F_l1x_
         constraint_l1y = F_l1y + F_l1y_
         # print(l1_vector)
@@ -696,7 +811,7 @@ class linkage_robot():
         #link a1
         force_balance_a1x = F_g2x + F_a1x
         force_balance_a1y = F_g2y + F_a1y
-        torque_balance_a1 = T2 + spvec.dot(N.k,spvec.cross(a1_vector,Fa1_vector))
+        torque_balance_a1 = T2 + spvec.dot(N.k,spvec.cross(a1_vec,Fa1_vector))
 
         #link b1
         force_balance_b1x = F_g3x + F_b1x
@@ -711,8 +826,8 @@ class linkage_robot():
         # print("t2_vec")
         # print(t2_vector)
         torque_balance_t1 = spvec.dot(N.k,
-                                      spvec.cross(t1_vector,Fb1_vector_)) + spvec.dot(N.k,
-                                      spvec.cross(t2_vector,Ft2_vector))
+                                      spvec.cross(t1_vec,Fb1_vector_)) + spvec.dot(N.k,
+                                      spvec.cross(t2_vec,Ft2_vector))
         constraint_Ft1x = F_t1x + F_t1x_
         constraint_Ft1y = F_t1y + F_t1y_
         constraint_Ft2 = F_t2 + F_t2_
@@ -735,7 +850,7 @@ class linkage_robot():
         Fl2_vector = N.i*F_l2x + N.j*F_l2y
         force_balance_l2x = F_a2x_ + F_l1x_ + F_l2x
         force_balance_l2y = F_a2y_ + F_l1y_ + F_l2y
-        torque_balance_l2 = spvec.dot(N.k,spvec.cross(a3_vector,Fa2_vector_) + spvec.cross(l2_vector,Fl2_vector))
+        torque_balance_l2 = spvec.dot(N.k,spvec.cross(a3_vector,Fa2_vector_) + spvec.cross(l2_vec,Fl2_vector))
         constraint_Fl2x = F_l2x + F_l2x_
         constraint_Fl2y = F_l2y + F_l2y_
         # print(torque_balance_l2)
@@ -919,7 +1034,7 @@ class linkage_robot():
         ax.set_xlim(self.x_window)
         ax.set_ylim(self.y_window)
 
-    def plot_link_loads(self, results = None, simple = True):
+    def plot_link_loads(self, joint_positions, results = None, simple = True):
         '''plots loads for each link as a separate free body'''
         if results is None:
             results = self.calculate_static_loads(simple = simple)
@@ -939,7 +1054,7 @@ class linkage_robot():
             if i==nplots:
                 continue
             ax.set_title(self.link_names[i])
-            self.plot_robot(ax, simple = simple, colors = 'lightgray')
+            self.plot_robot(ax, joint_positions, simple = simple, colors = 'lightgray')
             #highlight link
             for l in self.link_names_to_link_objects[i]:
                 self.plot_link(self.links[l],ax,color = "darkblue")
@@ -1000,19 +1115,21 @@ class linkage_robot():
 if __name__ == "__main__":
 
     robot = linkage_robot()
-    robot.calculate_kinematics([np.pi/4,-np.pi/4])
-    print(robot.forward_kinematics([np.pi/4,-np.pi/4]))
+    joint_pos = [np.pi/4,-np.pi/4]
+    robot.calculate_kinematics(joint_pos)
+    print(robot.forward_kinematics(joint_pos))
     print(robot.inverse_kinematics(np.array([0,0])))
+    robot.calculate_equations_of_motion()
     # print(robot.inverse_kinematics(np.array([0.5,0])))
     simple = False
     # robot.calculate_kinematics([np.pi/4,-np.pi/4])
     # robot.calculate_kinematics([0,-np.pi/2])
     results = robot.calculate_static_loads( ee_load = [0,10], simple = simple)
     fig, ax = plt.subplots()
-    robot.plot_robot(ax, simple=simple)
+    robot.plot_robot(ax, joint_pos, simple=simple)
     robot.plot_ee_load(ax,results, simple = simple)
     # robot.draw_arrow(ax,(0,0),(0.5,0.5),)
-    robot.plot_link_loads(results = results, simple = simple)
-    robot.time_analysis()
+    robot.plot_link_loads(joint_pos, results = results, simple = simple)
+    # robot.time_analysis()
     plt.show()
 

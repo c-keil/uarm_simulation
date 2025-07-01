@@ -155,12 +155,6 @@ class linkage_robot():
     def forward_kinematics(self,joint_angles, simple = True, full_state = False):
         '''Calcualtes forward kinematics for the arm
         joint_angles'''
-        # if not hasattr(self, 'fk_'):
-        #     theta_1, theta_2 = sp.symbols(('theta_1','theta_2'))
-        #     l1_vec = self.l1* sp.Matrix([sp.cos(theta_1), sp.sin(theta_1), 0])
-        #     l2_vec = self.l2* sp.Matrix([-sp.cos(theta_2), -sp.sin(theta_2), 0])
-        #     wrist_pos = l1_vec + l2_vec
-        #     self.fk_ = lambdify([theta_1, theta_2], wrist_pos)
         
         return self.fk_simple_(joint_angles[0],joint_angles[1])
     
@@ -249,11 +243,8 @@ class linkage_robot():
         ax.plot(link[0,:],link[1,:],color)
     
     def plot_robot(self, ax, simple = False, colors = None):
-        # if ax is None:
-        #     fig, ax = plt.subplots()
+
         ax.axis('equal')
-        # for key in links.keys():
-        #     plot_link
         if colors is None:
             colors = self.link_colors
         else:
@@ -261,46 +252,15 @@ class linkage_robot():
                 colors = {key:colors for key in self.link_colors}
             else:
                 colors = self.link_colors | colors
-        # print(colors)
-        # print(self.link_colors)
+
         for link in self.simple_links:
-            # print(link)
-            # print(self.links)
             self.plot_link(self.links[link],ax,color = colors[link])
-            # self.plot_link(self.link_l2,ax,color = 'k-')
-            # self.plot_link(self.link_a1,ax,color = 'c-')
-            # self.plot_link(self.link_a2,ax,color = 'g--')
-            # self.plot_link(self.link_a3,ax,color = 'k--')
-        # ax.plot(self.link_l2[0,1],self.link_l2[1,1],'rx')
 
         if not simple:
             for link in self.grounded_links:
                 self.plot_link(self.links[link],ax,color = colors[link])
-            # self.plot_link(self.link_b1,ax,color = 'r--')
-            # self.plot_link(self.link_t1,ax,color = 'y-')
-            # self.plot_link(self.link_t2,ax,color = 'y-')
-            # self.plot_link(self.link_t3,ax,color = 'y-')
-            # self.plot_link(self.link_b2,ax,color = 'r--')
-            # self.plot_link(self.link_ee1,ax,color = 'y-')
-            # self.plot_link(self.link_ee2,ax,color = 'y-')
-            # self.plot_link(self.link_ee3,ax,color = 'y-')
-        self.update_plot_lims(ax)
-        # return fig, ax
-    
-    # def plot_robot_(self):
-    #     fig, ax = plt.subplots()
-    #     ax.axis('equal')
-    #     # for key in links.keys():
-    #     #     plot_link
-    #     self.plot_link(self.link_l1,ax,color = 'b-')
-    #     self.plot_link(self.link_l2,ax,color = 'k-')
-    #     self.plot_link(self.link_a1,ax,color = 'c--')
-    #     self.plot_link(self.link_a2,ax,color = 'g--')
-    #     self.plot_link(self.link_a3,ax,color = 'k--')
-    #     ax.plot(self.link_l2[0,1],self.link_l2[1,1],'rx')
-    #     return fig, ax
-    
-    # def link_vector()
+            
+        self.update_plot_lims(ax) #does not handle plot resizing well
 
     def draw_torque(self, ax, link, value, center = 0, color = 'k', scale = 0.05, text = ""):
         '''draws a curved arrow representing torque.'''
@@ -384,9 +344,6 @@ class linkage_robot():
             self.draw_arrow(ax,point_a,end=point_b)
             self.draw_arrow(ax,point_d,end=point_c)
         ax.annotate(f"{value:.1f}N",midpoint)
-
-    # def plot_link_loads(self, results = None):
-    #     pass
 
     def calculate_equations_of_motion(self, simple = False):
         '''sets up the equations of motion'''

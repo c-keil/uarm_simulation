@@ -1,5 +1,5 @@
 import math
-
+#generated using sympy_ik
 def theta_2(xee, yee, l1, l2):
     theta2_1 =  2*math.atan((2*l2*yee - math.sqrt((-l1**2 + 2*l1*l2 - l2**2 + xee**2 + yee**2)*(l1**2 + 2*l1*l2 + l2**2 - xee**2 - yee**2)))/(-l1**2 + l2**2 + 2*l2*xee + xee**2 + yee**2))
     theta2_2 =  2*math.atan((2*l2*yee + math.sqrt((-l1**2 + 2*l1*l2 - l2**2 + xee**2 + yee**2)*(l1**2 + 2*l1*l2 + l2**2 - xee**2 - yee**2)))/(-l1**2 + l2**2 + 2*l2*xee + xee**2 + yee**2))

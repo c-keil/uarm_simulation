@@ -236,13 +236,14 @@ class linkage_robot():
         self.symbolic_vectors = {}
         #symbols
         #makes assumptions a1=a3 etc.
-        s1 = l1,l2,theta1,theta2, = sp.symbols(('l1','l2','theta1','theta2',))
-        s2 = a1,a2,a3 = sp.symbols(('a1','a2','a3'))
-        s3 = b1, b2 = sp.symbols(('b1','b2'))
-        s4 = t1,t2,t3,t1_init_angle,t2_init_angle = sp.symbols(('t1','t2','t3','t1_init_angle','t2_init_angle'))
-        s5 = e1,e2,e3,e2_angle = sp.symbols(('e1','e2','e3','e2_angle'))
+        s1 = theta1,theta2, = sp.symbols(('theta1','theta2',), real = True)
+        s2 = l1,l2 = sp.symbols(('l1','l2',), real = True, positive = True)
+        s3 = a1,a2,a3 = sp.symbols(('a1','a2','a3'), real = True, positive = True)
+        s4 = b1, b2 = sp.symbols(('b1','b2'), real = True, positive = True)
+        s5 = t1,t2,t3,t1_init_angle,t2_init_angle = sp.symbols(('t1','t2','t3','t1_init_angle','t2_init_angle'), real = True, positive = True)
+        s6 = e1,e2,e3,e2_angle = sp.symbols(('e1','e2','e3','e2_angle'), real = True, positive = True)
         
-        self.kinematic_symbols = s1 + s2 + s3 + s4 + s5
+        self.kinematic_symbols = s1 + s2 + s3 + s4 + s5 + s6
         substitutions = {
                         l1:self.l1,
                         l2:self.l2,
@@ -443,12 +444,12 @@ class linkage_robot():
 
     def calculate_equations_of_motion(self, simple = False):
         '''sets up the equations of motion'''
-        F_g1x,F_g1y,F_g2x,F_g2y,T1,T2 = sp.symbols(('F_g1x','F_g1y','F_g2x','F_g2y','T1','T2'))
+        F_g1x,F_g1y,F_g2x,F_g2y,T1,T2 = sp.symbols(('F_g1x','F_g1y','F_g2x','F_g2y','T1','T2') ,real = True)
         F_l1x,F_l1y,F_l1x_,F_l1y_,F_l2x,F_l2y,F_l2x_,F_l2y_,= sp.symbols(('F_l1x','F_l1y',
                    'F_l1x_','F_l1y_',
                    'F_l2x','F_l2y',
-                   'F_l2x_','F_l2y_',))
-        F_a1,F_a2,F_a1_,F_a2_,= sp.symbols(('F_a1', 'F_a2','F_a1_', 'F_a2_',))
+                   'F_l2x_','F_l2y_',), real = True)
+        F_a1,F_a2,F_a1_,F_a2_,= sp.symbols(('F_a1', 'F_a2','F_a1_', 'F_a2_',), real = True)
         # l1x,l1y,l2x,l2y = sp.symbols(('l1x','l1y','l2x','l2y'))
         if not simple:
             F_g3,F_g3_,F_b1,F_b1_,F_b2,F_b2_ = sp.symbols(('F_g3','F_g3_','F_b1','F_b1_','F_b2','F_b2_',))
@@ -559,7 +560,12 @@ class linkage_robot():
         #link a1
         force_balance_a1x = F_g2x + F_a1x
         force_balance_a1y = F_g2y + F_a1y
-        torque_balance_a1 = T2 + spvec.dot(B.k,spvec.cross(a1_vec,Fa1_vec))
+        # print("HERE")
+        # print(a1_vec)
+        # print(Fa1_vec)
+        # print(sp.simplify(Fa1_vec))
+        # print(spvec.cross(a1_vec,Fa1_vec))
+        torque_balance_a1 = T2 + spvec.dot(B.i,spvec.cross(a1_vec,Fa1_vec))
 
         #link b1
         force_balance_b1x = F_g3x + F_b1x
@@ -599,7 +605,7 @@ class linkage_robot():
         Fl2_vector = B.j*F_l2x + B.k*F_l2y
         force_balance_l2x = F_a2x_ + F_l1x_ + F_l2x
         force_balance_l2y = F_a2y_ + F_l1y_ + F_l2y
-        torque_balance_l2 = spvec.dot(B.k,spvec.cross(a3_vec,Fa2_vec_) + spvec.cross(l2_vec,Fl2_vector))
+        torque_balance_l2 = spvec.dot(B.i,spvec.cross(a3_vec,Fa2_vec_) + spvec.cross(l2_vec,Fl2_vector))
         constraint_Fl2x = F_l2x + F_l2x_
         constraint_Fl2y = F_l2y + F_l2y_
         # print(torque_balance_l2)
@@ -628,9 +634,25 @@ class linkage_robot():
                     force_balance_l2x,
                     force_balance_l2y,
                     torque_balance_l2,
-                    constraint_Ft1x,
-                    constraint_Ft1y,
                     ]
+
+        variables = [
+                    F_g1x,
+                    F_g1y,
+                    F_g2x,
+                    F_g2y,
+                    T1,
+                    T2,
+                    F_l1x,
+                    F_l1y,
+                    F_l1x_,
+                    F_l1y_,
+                    F_a1,
+                    F_a2,
+                    F_a1_,
+                    F_a2_,
+                    ]
+                
         if not simple:
             equations = equations + [
                                     force_balance_eex,
@@ -648,16 +670,23 @@ class linkage_robot():
                                     constraint_b2,
                                     constraint_Fl2x,
                                     constraint_Fl2y,
+                                    constraint_Ft1x,
+                                    constraint_Ft1y,
                                     ]
         #solve system of equations
         # print(equations)
-        equations = [e.subs(self.substitutions) for e in equations]
-        result = sp.solve(equations)
+        # equations = [e.subs(self.substitutions) for e in equations]
+        # _ = [print(i,e) for i, e in enumerate(equations)]
+
+        equations = [e.simplify() for e in equations]
+        _ = [print(i,e) for i, e in enumerate(equations)]
+
+        result = sp.solve(equations, variables)
     
         print(result)
 
-        with open('solution.p','wb') as f:
-            pickle.dump(result, f)
+        # with open('solution.p','wb') as f:
+        #     pickle.dump(result, f)
 
     def calculate_static_loads(self, ee_load = None, torques = None, simple = False):
         '''calculate the max static loads in all links.
@@ -1119,7 +1148,7 @@ if __name__ == "__main__":
     robot.calculate_kinematics(joint_pos)
     print(robot.forward_kinematics(joint_pos))
     print(robot.inverse_kinematics(np.array([0,0])))
-    robot.calculate_equations_of_motion()
+    robot.calculate_equations_of_motion(simple = True)
     # print(robot.inverse_kinematics(np.array([0.5,0])))
     simple = False
     # robot.calculate_kinematics([np.pi/4,-np.pi/4])

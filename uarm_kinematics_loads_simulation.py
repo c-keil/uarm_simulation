@@ -120,15 +120,16 @@ class linkage_robot():
                     "End Effector"]
     link_names_simple = link_names[:4]
 
-    link_names_to_link_objects = [["l1"],
-                                  ["a1"],
-                                  ["a2"],
-                                  ["a3","l2"],
-                                  ["b1"],
-                                  ["t1","t2","t3"],
-                                  ["b2"],
-                                  ["ee1","ee2","ee3"]]
+    link_objects = [["l1"],
+                    ["a1"],
+                    ["a2"],
+                    ["a3","l2"],
+                    ["b1"],
+                    ["t1","t2","t3"],
+                    ["b2"],
+                    ["ee1","ee2","ee3"]]
     
+    link_names_to_objects = {k:o for k,o in zip(link_names,link_objects)}
 
     link_colors = {link:"teal" for link in grounded_links}
     link_colors = link_colors | {link:"darkviolet" for link in simple_links}
@@ -840,30 +841,30 @@ class linkage_robot():
 
         #for plotting
         # self.force_orientations = {}
-        self.force_locations = {
-                        "F_l1":self.link_l1[:,-1],
-                        "F_l1_":self.link_l1[:,-1],
-                        "F_g1":self.link_l1[:,0],
-                        "F_g2":self.link_a1[:,0],
-                        "F_t1":self.link_l1[:,-1],
-                        "F_t1_":self.link_l1[:,-1],
-                        "T1":self.link_l1[:,0],
-                        "T2":self.link_a1[:,0],
-                        "F_a1":self.link_a2[:,0],
-                        "F_a1_":self.link_a2[:,0],
-                        "F_a2":self.link_a2[:,-1],
-                        "F_a2_":self.link_a2[:,-1],
-                        "F_b1":self.link_b1[:,-1],
-                        "F_b1_":self.link_b1[:,-1],
-                        "F_t2":self.link_b2[:,0],
-                        "F_t2_":self.link_b2[:,0],
-                        "F_b2":self.link_b2[:,1],
-                        "F_b2_":self.link_b2[:,1],
-                        "F_l2":self.link_l2[:,-1],
-                        "F_l2_":self.link_l2[:,-1],
-                        "F_ee":self.link_ee2[:,-1],
-                        "F_g3":self.link_b1[:,0]
-                        }
+        # self.force_locations = {
+        #                 "F_l1":self.link_l1[:,-1],
+        #                 "F_l1_":self.link_l1[:,-1],
+        #                 "F_g1":self.link_l1[:,0],
+        #                 "F_g2":self.link_a1[:,0],
+        #                 "F_t1":self.link_l1[:,-1],
+        #                 "F_t1_":self.link_l1[:,-1],
+        #                 "T1":self.link_l1[:,0],
+        #                 "T2":self.link_a1[:,0],
+        #                 "F_a1":self.link_a2[:,0],
+        #                 "F_a1_":self.link_a2[:,0],
+        #                 "F_a2":self.link_a2[:,-1],
+        #                 "F_a2_":self.link_a2[:,-1],
+        #                 "F_b1":self.link_b1[:,-1],
+        #                 "F_b1_":self.link_b1[:,-1],
+        #                 "F_t2":self.link_b2[:,0],
+        #                 "F_t2_":self.link_b2[:,0],
+        #                 "F_b2":self.link_b2[:,1],
+        #                 "F_b2_":self.link_b2[:,1],
+        #                 "F_l2":self.link_l2[:,-1],
+        #                 "F_l2_":self.link_l2[:,-1],
+        #                 "F_ee":self.link_ee2[:,-1],
+        #                 "F_g3":self.link_b1[:,0]
+        #                 }
 
         #link l1
         force_balance_l1x = F_g1x + F_l1x + F_t1x_
@@ -1013,25 +1014,26 @@ class linkage_robot():
         # print(results)
         results.update(result_)
         
-        upper_arm_link_to_forces = ["F_l1", "F_g1", "T1","F_t1_"]
-        forearm_link_to_forces = ["F_l1_", "F_a2_", "F_l2"]
-        a1_link_to_forces = ["T2","F_a1","F_g2"]
-        a2_link_to_forces = ["F_a2","F_a1_"]#need to flesh this out
-        upper_arm_grounded_link_forces = ["F_g3","F_b1"]
-        forearm_grounded_link_forces = ["F_t2_","F_b2"]
-        triangle_forces = ["F_t1","F_t2","F_b1_"]
-        ee_forces = ["F_ee", "F_b2_", "F_l2_"]
+        # upper_arm_link_to_forces = ["F_l1", "F_g1", "T1","F_t1_"]
+        # forearm_link_to_forces = ["F_l1_", "F_a2_", "F_l2"]
+        # a1_link_to_forces = ["T2","F_a1","F_g2"]
+        # a2_link_to_forces = ["F_a2","F_a1_"]#need to flesh this out
+        # upper_arm_grounded_link_forces = ["F_g3","F_b1"]
+        # forearm_grounded_link_forces = ["F_t2_","F_b2"]
+        # triangle_forces = ["F_t1","F_t2","F_b1_"]
+        # ee_forces = ["F_ee", "F_b2_", "F_l2_"]
 
-        self.forces_per_link = {
-            self.link_names[0]:upper_arm_link_to_forces,
-            self.link_names[1]:a1_link_to_forces,
-            self.link_names[2]:a2_link_to_forces,
-            self.link_names[3]:forearm_link_to_forces,
-            self.link_names[4]:upper_arm_grounded_link_forces,
-            self.link_names[5]:triangle_forces,
-            self.link_names[6]:forearm_grounded_link_forces,
-            self.link_names[7]:ee_forces,
-        }
+        # self.forces_per_link = {
+        #     self.link_names[0]:upper_arm_link_to_forces,
+        #     self.link_names[1]:a1_link_to_forces,
+        #     self.link_names[2]:a2_link_to_forces,
+        #     self.link_names[3]:forearm_link_to_forces,
+        #     self.link_names[4]:upper_arm_grounded_link_forces,
+        #     self.link_names[5]:triangle_forces,
+        #     self.link_names[6]:forearm_grounded_link_forces,
+        #     self.link_names[7]:ee_forces,
+        # }
+
         # print("Torque Balance")
         # print(f"F_l1x = {result[F_l1x]}")
         # print(f"F_l1y = {result[F_l1y]}")
@@ -1048,8 +1050,8 @@ class linkage_robot():
         ax.plot(link[0,:],link[1,:],color)
     
     def plot_link2D(self, link_name, joint_pos, ax, color = 'b'):
-        theta1 = joint_pos[0]
-        theta2 = joint_pos[1]
+        theta1 = joint_pos.reshape(-1)[0]
+        theta2 = joint_pos.reshape(-1)[1]
         link_coords = self.link_lambdas[link_name](theta1,theta2)
         ax.plot(link_coords[1,:],link_coords[2,:],color)
 
@@ -1248,7 +1250,7 @@ class linkage_robot():
             ax.set_title(self.link_names[i])
             self.plot_robot(ax, joint_positions, simple = simple, colors = 'lightgray')
             #highlight link
-            for l in self.link_names_to_link_objects[i]:
+            for l in self.link_objects[i]:
                 self.plot_link(self.links[l],ax,color = "darkblue")
 
                 #add forces

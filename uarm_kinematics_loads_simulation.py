@@ -58,6 +58,11 @@ class linkage_robot():
 
     joint_max_torques = [32,32] #Nm
     
+    joint_lims = np.array([
+        [0,np.pi],
+        [-np.pi,0]
+        ])
+
     #Main arm links
     link_l1 = None
     link_a1 = None
@@ -178,6 +183,19 @@ class linkage_robot():
             return np.array(sol1)
         else:
             return np.array(sol2)
+    
+    def check_joint_lims(self, joint_positions:np.ndarray) -> np.ndarray:
+        '''returns falso if supplied joints positions are outside limmits. Joint positions should have shape
+        [[joint0],
+        [joint1]]'''
+        # print(joint_positions.shape)
+        # print(self.joint_lims.shape)
+        # print(self.joint_lims[:,0].shape)
+        print("check joint lims")
+        print(self.joint_lims)
+        print(joint_positions)
+        print(self.joint_lims[:,0].reshape(2,1) <= joint_positions.reshape(2,-1))
+        return np.all(self.joint_lims[:,0].reshape(2,1) <= joint_positions.reshape(2,-1)) and np.all( joint_positions.reshape(2,-1) <= self.joint_lims[:,1].reshape(2,1))
 
     def calculate_kinematics(self, joint_angles = None):
         if not joint_angles is None:
@@ -1234,6 +1252,8 @@ if __name__ == "__main__":
     robot = linkage_robot(simple = simple)
     joint_pos = np.array([np.pi/4,-np.pi/4])
     robot.calculate_kinematics(joint_pos)
+
+    print(robot.check_joint_lims(joint_pos))
     # print(robot.forward_kinematics(joint_pos))
     # print(robot.inverse_kinematics(np.array([0,0])))
     # robot.calculate_equations_of_motion()
@@ -1248,6 +1268,7 @@ if __name__ == "__main__":
     #test vectorized
 
     joint_pos2 = np.repeat(joint_pos.reshape(2,-1),2,axis = 1)
+    print(robot.check_joint_lims(joint_pos2))
     # print(joint_pos2)
     ee_forces2 = np.array([[0,0],[1,-1]])
     results2 = robot.compute_static_loads_symbolic(joint_pos2,ee_forces2)

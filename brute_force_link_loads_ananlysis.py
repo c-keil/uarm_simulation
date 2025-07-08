@@ -20,13 +20,15 @@ max_loads = [np.zeros((z_grid_size,y_grid_size)) for _ in ee_loads]
 max_torques = []
 
 
+fig, ax = plt.subplots()
+
 for j, y in enumerate(ypos):
     for i, z in enumerate(zpos):
         #note i,j vs x,y complies with matplotlib convention
         pos = [y,z]
         
         joint_pos = robot.inverse_kinematics(pos)
-        if np.any(np.isnan(joint_pos)):
+        if np.any(np.isnan(joint_pos)) or not robot.check_joint_lims(joint_pos):
             for ml in max_loads:
                 ml[i,j] = np.nan
             continue
@@ -42,6 +44,9 @@ for j, y in enumerate(ypos):
             load = ee_load * t_factor
             
             max_load[i,j] = np.linalg.norm(load)
+        
+        robot.plot_robot(ax, joint_pos)
+        plt.draw()
             
 fig, axes = plt.subplots(2,2)
 ims = []

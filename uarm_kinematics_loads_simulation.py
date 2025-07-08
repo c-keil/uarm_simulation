@@ -142,6 +142,7 @@ class linkage_robot():
         _ = self.calculate_kinematics()
         self.symbolic_forward_kinematics()
         self.calculate_equations_of_motion()
+        self.define_force_locations()
         return
     
     def set_joint_position(self, joint_angles):
@@ -615,6 +616,53 @@ class linkage_robot():
 
         # with open('solution.p','wb') as f:
         #     pickle.dump(result, f)
+    
+    def define_force_locations(self):
+        '''defines force locations for plotting'''
+        self.force_locations = {
+                        "F_l1":self.link_l1[:,-1],
+                        "F_l1_":self.link_l1[:,-1],
+                        "F_g1":self.link_l1[:,0],
+                        "F_g2":self.link_a1[:,0],
+                        "F_t1":self.link_l1[:,-1],
+                        "F_t1_":self.link_l1[:,-1],
+                        "T1":self.link_l1[:,0],
+                        "T2":self.link_a1[:,0],
+                        "F_a1":self.link_a2[:,0],
+                        "F_a1_":self.link_a2[:,0],
+                        "F_a2":self.link_a2[:,-1],
+                        "F_a2_":self.link_a2[:,-1],
+                        "F_b1":self.link_b1[:,-1],
+                        "F_b1_":self.link_b1[:,-1],
+                        "F_t2":self.link_b2[:,0],
+                        "F_t2_":self.link_b2[:,0],
+                        "F_b2":self.link_b2[:,1],
+                        "F_b2_":self.link_b2[:,1],
+                        "F_l2":self.link_l2[:,-1],
+                        "F_l2_":self.link_l2[:,-1],
+                        "F_ee":self.link_ee2[:,-1],
+                        "F_g3":self.link_b1[:,0]
+                        }
+        upper_arm_link_to_forces = ["F_l1", "F_g1", "T1","F_t1_"]
+        forearm_link_to_forces = ["F_l1_", "F_a2_", "F_l2"]
+        a1_link_to_forces = ["T2","F_a1","F_g2"]
+        a2_link_to_forces = ["F_a2","F_a1_"]#need to flesh this out
+        upper_arm_grounded_link_forces = ["F_g3","F_b1"]
+        forearm_grounded_link_forces = ["F_t2_","F_b2"]
+        triangle_forces = ["F_t1","F_t2","F_b1_"]
+        ee_forces = ["F_ee", "F_b2_", "F_l2_"]
+
+        self.forces_per_link = {
+            self.link_names[0]:upper_arm_link_to_forces,
+            self.link_names[1]:a1_link_to_forces,
+            self.link_names[2]:a2_link_to_forces,
+            self.link_names[3]:forearm_link_to_forces,
+            self.link_names[4]:upper_arm_grounded_link_forces,
+            self.link_names[5]:triangle_forces,
+            self.link_names[6]:forearm_grounded_link_forces,
+            self.link_names[7]:ee_forces,
+        }
+    
     def compute_static_loads_symbolic(self, 
                                       joint_pos : np.ndarray, 
                                       ee_load : np.ndarray) -> dict:
@@ -675,7 +723,8 @@ class linkage_robot():
             computed_forces['F_ee'] = ee_load
         
         return computed_forces
-
+    
+    
 
     def calculate_static_loads(self, ee_load = None, torques = None, simple = False):
         '''calculate the max static loads in all links.
@@ -713,8 +762,6 @@ class linkage_robot():
             else:
                 F_eex = ee_load[0]
                 F_eey = ee_load[1]
-        print("????")
-        print(F_l2x)
 
         #vectors
         l1_vec = (self.link_l1[:,1] - self.link_l1[:,0])

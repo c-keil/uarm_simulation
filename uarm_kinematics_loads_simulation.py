@@ -609,14 +609,14 @@ class linkage_robot():
                 try:
                     computed_forces[vec_key][0] = computed_forces[key]
                 except KeyError:
-                    computed_forces[vec_key] = np.zeros_like(ee_load)
+                    computed_forces[vec_key] = np.zeros_like(ee_load, dtype=float)
                     computed_forces[vec_key][0] = computed_forces[key]
             elif key[-2] == 'x':
                 vec_key = key[:-2] + key[-1]
                 try:
                     computed_forces[vec_key][0] = computed_forces[key]
                 except KeyError:
-                    computed_forces[vec_key] = np.zeros_like(ee_load)
+                    computed_forces[vec_key] = np.zeros_like(ee_load, dtype=float)
                     computed_forces[vec_key][0] = computed_forces[key]
             
             elif key[-1] == 'y':
@@ -624,14 +624,14 @@ class linkage_robot():
                 try:
                     computed_forces[vec_key][1] = computed_forces[key]
                 except KeyError:
-                    computed_forces[vec_key] = np.zeros_like(ee_load)
+                    computed_forces[vec_key] = np.zeros_like(ee_load, dtype=float)
                     computed_forces[vec_key][1] = computed_forces[key]
             elif key[-2] == 'y':
                 vec_key = key[:-2] + key[-1]
                 try:
                     computed_forces[vec_key][1] = computed_forces[key]
                 except KeyError:
-                    computed_forces[vec_key] = np.zeros_like(ee_load)
+                    computed_forces[vec_key] = np.zeros_like(ee_load, dtype=float)
                     computed_forces[vec_key][1] = computed_forces[key]
         if simple:
             computed_forces['F_l2x'] = ee_load[0]      
@@ -1248,7 +1248,9 @@ if __name__ == "__main__":
     for key in results2.keys():
         print(f"{key} : {results[key]} vs {results2[key]}")
     #test vectorized
-    joint_pos2 = np.array([[np.pi/4,-np.pi/4],[np.pi/4,-np.pi/4]])
+
+    joint_pos2 = np.repeat(joint_pos.reshape(2,-1),2,axis = 1)
+    print(joint_pos2)
     ee_forces2 = np.array([[0,0],[1,-1]])
     results2 = robot.compute_static_loads_symbolic(joint_pos2,ee_forces2,simple = simple)
     print(results2)

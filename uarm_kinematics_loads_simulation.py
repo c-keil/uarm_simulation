@@ -243,8 +243,13 @@ class linkage_robot():
         s5 = t1,t2,t3,t1_init_angle,t2_init_angle = sp.symbols(('t1','t2','t3','t1_init_angle','t2_init_angle'), real = True, positive = True)
         s6 = e1,e2,e3,e2_angle = sp.symbols(('e1','e2','e3','e2_angle'), real = True, positive = True)
         
-        self.kinematic_symbols = s1 + s2 + s3 + s4 + s5 + s6
-        substitutions = {
+        all_symbols = s1 + s2 + s3 + s4 + s5 + s6
+        self.kinematic_symbols = {s.name:s for s in all_symbols}
+        # print("symbols")
+        # print(s1[0])
+        # print(dir(s1[0]))
+        # print(f"Name: {s1[0].name}")
+        constants_substitutions = {
                         l1:self.l1,
                         l2:self.l2,
                         a1:self.a1,
@@ -255,7 +260,7 @@ class linkage_robot():
                         e2:self.e2,
                         e2_angle:self.e2_angle
                         }
-        self.substitutions = substitutions
+        self.constants_substitutions = constants_substitutions
 
         #basic links
         l1_vec = l1*(B.j*sp.cos(theta1) +B.k*sp.sin(theta1))
@@ -271,7 +276,7 @@ class linkage_robot():
         wrist_pos = wrist_vec.to_matrix(B)
 
         #make fk function
-        self.wrist_fk = sp.lambdify([theta1, theta2], wrist_pos.subs(substitutions))
+        self.wrist_fk = sp.lambdify([theta1, theta2], wrist_pos.subs(constants_substitutions))
 
         a1_vec = 0*B.i  + B.j*a1*sp.cos(sp.pi+theta2) + B.k*a1*sp.sin(sp.pi + theta2)
         self.symbolic_vectors['a1'] = a1_vec
@@ -326,185 +331,50 @@ class linkage_robot():
         #make non symbolic link calculations
         self.link_lambdas = {}
         for key in self.symbolic_links.keys():
-            self.link_lambdas[key] = sp.lambdify([theta1, theta2], self.symbolic_links[key].subs(substitutions))
-
-    def plot_link(self, link, ax, color = 'b'):
-        ax.plot(link[0,:],link[1,:],color)
-    
-    def plot_link2D(self, link_name, joint_pos, ax, color = 'b'):
-        theta1 = joint_pos[0]
-        theta2 = joint_pos[1]
-        link_coords = self.link_lambdas[link_name](theta1,theta2)
-        ax.plot(link_coords[1,:],link_coords[2,:],color)
-
-    def plot_robot(self, ax, joint_positions, simple = False, colors = None):
-        ax.axis('equal')
-        if colors is None:
-            colors = self.link_colors
-        else:
-            if isinstance(colors,str):
-                colors = {key:colors for key in self.link_colors}
-            else:
-                colors = self.link_colors | colors
-
-        for link in self.simple_links:
-            self.plot_link2D(link, joint_positions, ax, colors[link])
-            # self.plot_link(self.link_lambdas[link](np.pi/4,-np.pi/4),ax,color = colors[link])
-            # self.plot_link(self.links[link],ax,color = colors[link])
-
-        if not simple:
-            for link in self.grounded_links:
-                self.plot_link2D(link, joint_positions, ax, colors[link])
-                # self.plot_link(self.links[link],ax,color = colors[link])
-            
-        self.update_plot_lims(ax) #does not handle plot resizing well
-
-    def draw_torque(self, ax, link, value, center = 0, color = 'k', scale = 0.05, text = ""):
-        '''draws a curved arrow representing torque.'''
-
-        a = (180.0-45)/2
-        if value > 0:
-            curvature = 1
-            arrowstyle = patches.ArrowStyle.CurveB()
-            ang = np.pi/2
-        else:
-            curvature = -1
-            arrowstyle = patches.ArrowStyle.CurveB()
-            ang = -np.pi/2
-
-        torque_center = link[:2,center]
-        link_vector = link[:,-1]-link[:,center]
-        link_vector_hat = link_vector/np.linalg.norm(link_vector)
-        offset_angle = np.rad2deg(np.arccos(link_vector_hat[0]))
-
-        start_point = torque_center + link_vector_hat[:2]*scale
-        rot = np.array([[np.cos(ang), -np.sin(ang)],
-                        [np.sin(ang),  np.cos(ang)]])
-        end_point = torque_center + rot@link_vector_hat[:2]*scale
-        angleA = curvature*(180-a) + offset_angle
-        angleB= curvature*(90-(180-a))  + offset_angle
-        connectionstyle = patches.ConnectionStyle.Angle3(angleA=angleA, angleB=angleB)
-
-        a = patches.FancyArrowPatch(start_point, end_point,
-                             connectionstyle=connectionstyle, 
-                             arrowstyle=arrowstyle,
-                             mutation_scale=10)
-        ax.add_patch(a)
-        text_point = end_point + np.array([0, 0.03])
-        if not text == "":
-            ax.annotate(text,text_point,annotation_clip=False)
-
-        self.track_plot_window_size_(text_point)
-        self.track_plot_window_size_(end_point)
-
-    def draw_arrow(self, ax, start, end = None, vector = None, text = ''):
-        if end is None and vector is None:
-            raise NotImplementedError
-        
-        start = deepcopy(start)
-        end = deepcopy(end)
-        vector = deepcopy(vector)
-
-        start_coords = np.array(start).reshape(-1)[:2]
-        
-        if not end is None:
-            end_coords = np.array(end).reshape(-1)[:2]
-        else:
-            end_coords = start_coords + np.array(vector).reshape(-1)[:2]
-
-        ax.annotate("", end_coords, xytext = start_coords, arrowprops = {'arrowstyle':'->'}, annotation_clip=False)
-        self.track_plot_window_size_(start_coords)
-        self.track_plot_window_size_(end_coords)
-        if not text == "":
-            if end_coords[0]-start_coords[0] < 0:
-                text_coords = end_coords - np.array([0.03,0.03])
-            else:
-                text_coords = end_coords
-            self.track_plot_window_size_(text_coords)
-            ax.annotate(text,text_coords,annotation_clip=False)
-        # ax.annotate('', end_coords, xytext = start_coords, arrowprops = {'width':0.5, 'headwidth':5, 'headlength':5})
-    
-    def draw_link_force(self,ax,link,value):
-        #midpoint
-        link_vector = link[:,-1]-link[:,0]
-        link_len = np.linalg.norm(link_vector)
-        point_a = link[:2,0]
-        point_b = (link_vector*0.25)[:2] + point_a
-        point_c = (link_vector*0.75)[:2] + point_a
-        point_d = link[:2,1]
-        midpoint = (link_vector*0.4)[:2] + point_a
-        
-        if value > 0:
-            self.draw_arrow(ax,point_b,end=point_a)
-            self.draw_arrow(ax,point_c,end=point_d,)
-        else:
-            self.draw_arrow(ax,point_a,end=point_b)
-            self.draw_arrow(ax,point_d,end=point_c)
-        ax.annotate(f"{value:.1f}N",midpoint)
+            self.link_lambdas[key] = sp.lambdify([theta1, theta2], self.symbolic_links[key].subs(constants_substitutions))
 
     def calculate_equations_of_motion(self, simple = False):
         '''sets up the equations of motion'''
+        #symbols
         F_g1x,F_g1y,F_g2x,F_g2y,T1,T2 = sp.symbols(('F_g1x','F_g1y','F_g2x','F_g2y','T1','T2') ,real = True)
-        F_l1x,F_l1y,F_l1x_,F_l1y_,F_l2x,F_l2y,F_l2x_,F_l2y_,= sp.symbols(('F_l1x','F_l1y',
-                   'F_l1x_','F_l1y_',
-                   'F_l2x','F_l2y',
-                   'F_l2x_','F_l2y_',), real = True)
+        F_l1x,F_l1y,F_l1x_,F_l1y_,F_l2x,F_l2y,F_l2x_,F_l2y_,= sp.symbols((
+                    'F_l1x','F_l1y',
+                    'F_l1x_','F_l1y_',
+                    'F_l2x','F_l2y',
+                    'F_l2x_','F_l2y_',), real = True)
         F_a1,F_a2,F_a1_,F_a2_,= sp.symbols(('F_a1', 'F_a2','F_a1_', 'F_a2_',), real = True)
         # l1x,l1y,l2x,l2y = sp.symbols(('l1x','l1y','l2x','l2y'))
         if not simple:
-            F_g3,F_g3_,F_b1,F_b1_,F_b2,F_b2_ = sp.symbols(('F_g3','F_g3_','F_b1','F_b1_','F_b2','F_b2_',))
+            F_g3,F_g3_,F_b1,F_b1_,F_b2,F_b2_ = sp.symbols(('F_g3','F_g3_','F_b1','F_b1_','F_b2','F_b2_',), real = True)
             F_t1x,F_t1y,F_t1x_,F_t1y_,F_t2,F_t2_,F_eex,F_eey, = sp.symbols(('F_t1x','F_t1y',
                                                                             'F_t1x_','F_t1y_',
                                                                             'F_t2','F_t2_',
-                                                                            'F_eex','F_eey'))
+                                                                            'F_eex','F_eey'), real = True)
         else:
             F_g3,F_g3_,F_b1,F_b1_,F_b2,F_b2_ = 0,0,0,0,0,0
             F_t1x,F_t1y,F_t1x_,F_t1y_,F_t2,F_t2_,F_eex,F_eey, = 8*(0,)
+        
+        #reference frame
         B = self.Base
 
         #vectors
         l1_vec = self.symbolic_vectors['l1']
-        # l1_vec = (self.link_l1[:,1] - self.link_l1[:,0])
         l2_vec = self.symbolic_vectors['l2']
-        # l2_vec = (self.link_l2[:,1] - self.link_l2[:,0])
         a1_vec = self.symbolic_vectors['a1']
-        # a1_vec = (self.link_a1[:,1] - self.link_a1[:,0])
         a2_vec = self.symbolic_vectors['a2']
-        # a2_vec = (self.link_a2[:,1] - self.link_a2[:,0])
         a2_hat = a2_vec / a2_vec.magnitude()
         
         b1_vec = self.symbolic_vectors['b1']
         b1_hat = b1_vec / b1_vec.magnitude()
-        # b1_vec = self.link_b1[:,1] - self.link_b1[:,0]
         b2_vec = self.symbolic_vectors['b2']
         b2_hat = b2_vec / b2_vec.magnitude()
-        # b2_vec = self.link_b2[:,1] - self.link_b2[:,0]
-        # b1_hat = b1_vec/np.linalg.norm(b1_vec)
-        # b2_hat = b2_vec/np.linalg.norm(b2_vec)
         e1_vec = self.symbolic_vectors['ee1']
         e2_vec = self.symbolic_vectors['ee2']
         t1_vec = self.symbolic_vectors['t1']
         t2_vec = self.symbolic_vectors['t2']
-        # e1_vec = self.link_ee1[:,1] - self.link_ee1[:,0]
-        # e2_vec = self.link_ee2[:,1] - self.link_ee2[:,0]
-        # t1_vec = self.link_t1[:,1] - self.link_t1[:,0]
-        # t2_vec = self.link_t2[:,1] - self.link_t2[:,0]
-        # e1_hat = e1_vec/np.linalg.norm(e1_vec)
-
-        # l1_vec = B.i*l1_vec[0] + B.j*l1_vec[1]
-        # l2_vec = B.i*l2_vec[0] + B.j*l2_vec[1]
-        # a1_vec = B.i*a1_vec[0] + B.j*a1_vec[1]
-        # b1_vec = B.i*b1_vec[0] + B.j*b1_vec[1]
-        # b2_vec = B.i*b2_vec[0] + B.j*b2_vec[1]
-        # t1_vec = B.i*t1_vec[0] + B.j*t1_vec[1]
-        # t2_vec = B.i*t2_vec[0] + B.j*t2_vec[1]
-        # b1_vec_hat = b1_vec/sp.sqrt(b1_vec.dot(b1_vec))
-        # b2_vec_hat = b2_vec/sp.sqrt(b2_vec.dot(b2_vec))
         Fl1_vec = B.j*F_l1x + B.k*F_l1y
         Ft1_vec = B.j*F_t1x + B.k*F_t1y
         Ft1_vec_ = B.j*F_t1x_ + B.k*F_t1y_
-        # e1_vec = B.i*e1_vec[0] + B.j*e1_vec[1]
-        # e2_vec = B.i*e2_vec[0] + B.j*e2_vec[1]
         
         #linakge forces - constraint is only valid for a static scenario
         F_a1x = F_a1 * a2_hat.dot(B.j)
@@ -555,16 +425,10 @@ class linkage_robot():
                                            spvec.cross(l1_vec,Ft1_vec_))
         constraint_l1x = F_l1x + F_l1x_
         constraint_l1y = F_l1y + F_l1y_
-        # print(l1_vector)
-        # print(torque_balance_l1)
+        
         #link a1
         force_balance_a1x = F_g2x + F_a1x
         force_balance_a1y = F_g2y + F_a1y
-        # print("HERE")
-        # print(a1_vec)
-        # print(Fa1_vec)
-        # print(sp.simplify(Fa1_vec))
-        # print(spvec.cross(a1_vec,Fa1_vec))
         torque_balance_a1 = T2 + spvec.dot(B.i,spvec.cross(a1_vec,Fa1_vec))
 
         #link b1
@@ -575,10 +439,6 @@ class linkage_robot():
         #link t1
         force_balance_t1x = F_b1x_ + F_t2x + F_t1x
         force_balance_t1y = F_b1y_ + F_t2y + F_t1y
-        # print("t1_vec")
-        # print(t1_vector)
-        # print("t2_vec")
-        # print(t2_vector)
         torque_balance_t1 = spvec.dot(B.i,
                                       spvec.cross(t1_vec,Fb1_vec_)) + spvec.dot(B.i,
                                       spvec.cross(t2_vec,Ft2_vec))
@@ -595,20 +455,16 @@ class linkage_robot():
         #can be simplified out, but included for visualization purposes
         force_balance_a2x = F_a1x_ + F_a2x
         force_balance_a2y = F_a1y_ + F_a2y
-        # print(force_balance_a2x)
         #constraint that forces are alligned with link vector applied above
 
         #link l2
         a3_vec = self.symbolic_vectors['a3']
-        # a3_vec = (self.link_a3[:,1] - self.link_a3[:,0])
-        # a3_vector = B.i*a3_vec[0] + B.j*a3_vec[1]
         Fl2_vector = B.j*F_l2x + B.k*F_l2y
         force_balance_l2x = F_a2x_ + F_l1x_ + F_l2x
         force_balance_l2y = F_a2y_ + F_l1y_ + F_l2y
         torque_balance_l2 = spvec.dot(B.i,spvec.cross(a3_vec,Fa2_vec_) + spvec.cross(l2_vec,Fl2_vector))
         constraint_Fl2x = F_l2x + F_l2x_
         constraint_Fl2y = F_l2y + F_l2y_
-        # print(torque_balance_l2)
 
         #link ee
         Fee_vector = F_eex*B.j + F_eey*B.k
@@ -617,7 +473,6 @@ class linkage_robot():
         torque_balance_ee = spvec.dot(B.i,
                                       spvec.cross(e1_vec,Fb2_vec_)) + spvec.dot(B.i,
                                       spvec.cross(e2_vec,Fee_vector))
-        # print(torque_balance_l2)
         equations = [
                     force_balance_l1x,
                     force_balance_l1y,
@@ -635,14 +490,14 @@ class linkage_robot():
                     force_balance_l2y,
                     torque_balance_l2,
                     ]
+        equations = [e.simplify() for e in equations]
 
+        #All internal forces + motor torques in terms of ee_load, joint_pos
         variables = [
                     F_g1x,
                     F_g1y,
                     F_g2x,
                     F_g2y,
-                    T1,
-                    T2,
                     F_l1x,
                     F_l1y,
                     F_l1x_,
@@ -651,42 +506,150 @@ class linkage_robot():
                     F_a2,
                     F_a1_,
                     F_a2_,
+                    T1,
+                    T2
                     ]
-                
+        
         if not simple:
-            equations = equations + [
-                                    force_balance_eex,
-                                    force_balance_eey,
-                                    torque_balance_ee,
-                                    force_balance_t1x,
-                                    force_balance_t1y,
-                                    torque_balance_t1,
-                                    constraint_Ft2,
-                                    force_balance_b1x,
-                                    force_balance_b1y,
-                                    constraint_b1,
-                                    force_balance_b2x,
-                                    force_balance_b2y,
-                                    constraint_b2,
-                                    constraint_Fl2x,
-                                    constraint_Fl2y,
-                                    constraint_Ft1x,
-                                    constraint_Ft1y,
-                                    ]
+            equations_partial = [
+                force_balance_eex,
+                force_balance_eey,
+                torque_balance_ee,
+                force_balance_t1x,
+                force_balance_t1y,
+                torque_balance_t1,
+                constraint_Ft2,
+                force_balance_b1x,
+                force_balance_b1y,
+                constraint_b1,
+                force_balance_b2x,
+                force_balance_b2y,
+                constraint_b2,
+                constraint_Fl2x,
+                constraint_Fl2y,
+                constraint_Ft1x,
+                constraint_Ft1y,
+            ]
+            equations = equations + [e.simplify() for e in equations_partial]
+            variables = variables + [
+                F_l2x,
+                F_l2y,
+                F_l2x_,
+                F_l2y_,
+                F_g3,
+                F_b1,
+                F_b1_,
+                F_b2,
+                F_b2_,
+                F_t1x,
+                F_t1y,
+                F_t1x_,
+                F_t1y_,
+                F_t2,
+                F_t2_,
+            ]
+            # self.symbolic_force_solutions_full = sp.solve(equations_full, variables_full)
+            # self.force_lambdas_full = {}
+            # for key in self.symbolic_force_solutions_full.keys():
+            #     self.force_lambdas_full[key.name] = sp.lambdify([
+            #                                             self.kinematic_symbols['theta1'], 
+            #                                             self.kinematic_symbols['theta2'],
+            #                                             F_eex,
+            #                                             F_eey,
+            #                                         ], 
+            #                                         self.symbolic_force_solutions_full[key].subs(self.constants_substitutions))
+        print(f"len of varaibles {len(variables)}")
+        _ = [print(i,v) for i, v in enumerate(variables)]
+        print(f"len of equations {len(equations)}")
+        _ = [print(i,e) for i, e in enumerate(equations)]
+        self.symbolic_force_solutions = sp.solve(equations, variables)
+        self.force_lambdas = {}
+        print(self.symbolic_force_solutions)
+        for key in self.symbolic_force_solutions.keys():
+            self.force_lambdas[key.name] = sp.lambdify([
+                                                    self.kinematic_symbols['theta1'], 
+                                                    self.kinematic_symbols['theta2'],
+                                                    F_l2x if simple else F_eex,
+                                                    F_l2y if simple else F_eey,
+                                                  ], 
+                                                  self.symbolic_force_solutions[key].subs(self.constants_substitutions))
         #solve system of equations
         # print(equations)
         # equations = [e.subs(self.substitutions) for e in equations]
+
         # _ = [print(i,e) for i, e in enumerate(equations)]
 
-        equations = [e.simplify() for e in equations]
-        _ = [print(i,e) for i, e in enumerate(equations)]
-
-        result = sp.solve(equations, variables)
+        
     
-        print(result)
+        # print(self.symbolic_force_solutions)
 
         # with open('solution.p','wb') as f:
         #     pickle.dump(result, f)
+    def compute_static_loads_symbolic(self, 
+                                      joint_pos : np.ndarray, 
+                                      ee_load : np.ndarray, 
+                                      simple:bool = False) -> dict:
+        '''evaluates static loads for all forces assuming ee_load and joint positions are known.
+        Accepts vectorized inputs joint_pos and ee_load. Must have shape (2,...)'''
+        
+        # joint_pos = joint_pos.reshape(2,-1)
+        # ee_load = joint_pos.reshape(2,-1)
+        assert joint_pos.shape == ee_load.shape
+        assert joint_pos.shape[0] == 2 or len(joint_pos.shape) == 1
+
+        computed_forces = {}
+        for key in self.force_lambdas.keys():
+            computed_forces[key] = self.force_lambdas[key](joint_pos[0],
+                                                            joint_pos[1],
+                                                            ee_load[0],
+                                                            ee_load[1],)
+            #add vectors
+            if key[-1] == 'x':
+                vec_key = key[:-1]
+                try:
+                    computed_forces[vec_key][0] = computed_forces[key]
+                except KeyError:
+                    computed_forces[vec_key] = np.zeros_like(ee_load)
+                    computed_forces[vec_key][0] = computed_forces[key]
+            elif key[-2] == 'x':
+                vec_key = key[:-2] + key[-1]
+                try:
+                    computed_forces[vec_key][0] = computed_forces[key]
+                except KeyError:
+                    computed_forces[vec_key] = np.zeros_like(ee_load)
+                    computed_forces[vec_key][0] = computed_forces[key]
+            
+            elif key[-1] == 'y':
+                vec_key = key[:-1]
+                try:
+                    computed_forces[vec_key][1] = computed_forces[key]
+                except KeyError:
+                    computed_forces[vec_key] = np.zeros_like(ee_load)
+                    computed_forces[vec_key][1] = computed_forces[key]
+            elif key[-2] == 'y':
+                vec_key = key[:-2] + key[-1]
+                try:
+                    computed_forces[vec_key][1] = computed_forces[key]
+                except KeyError:
+                    computed_forces[vec_key] = np.zeros_like(ee_load)
+                    computed_forces[vec_key][1] = computed_forces[key]
+        if simple:
+            computed_forces['F_l2x'] = ee_load[0]      
+            computed_forces['F_l2y'] = ee_load[1]
+            computed_forces['F_l2'] = ee_load
+            computed_forces['F_l2x_'] = -ee_load[0]      
+            computed_forces['F_l2y_'] = -ee_load[1]
+            computed_forces['F_l2_'] = ee_load    
+        else:
+            computed_forces['F_eex'] = ee_load[0]      
+            computed_forces['F_eey'] = ee_load[1]
+            computed_forces['F_ee'] = ee_load
+            # computed_forces['F_eex_'] = -ee_load[0]      
+            # computed_forces['F_eey_'] = -ee_load[1]
+            # computed_forces['F_ee_'] = -np.array(ee_load)
+        
+        return computed_forces
+
 
     def calculate_static_loads(self, ee_load = None, torques = None, simple = False):
         '''calculate the max static loads in all links.
@@ -724,6 +687,8 @@ class linkage_robot():
             else:
                 F_eex = ee_load[0]
                 F_eey = ee_load[1]
+        print("????")
+        print(F_l2x)
 
         #vectors
         l1_vec = (self.link_l1[:,1] - self.link_l1[:,0])
@@ -930,9 +895,19 @@ class linkage_robot():
                                     constraint_Fl2y,
                                     ]
         #solve system of equations
-        # print(equations)
         result = sp.solve(equations)
-        # print(result)
+        result_ = {k.name:float(result[k]) for k in result.keys()}
+        if simple:
+            result_['F_l2x'] = F_l2x
+            result_['F_l2y'] = F_l2y
+            result['F_l2'] = ee_load
+            result_['F_l2x_'] = -F_l2x
+            result_['F_l2y_'] = -F_l2y
+            result_['F_l2_'] = -np.array(ee_load)
+        else:
+            result_['F_eex'] = F_eex
+            result_['F_eey'] = F_eey
+            result_['F_ee'] = np.array(ee_load)
 
         results = {}
         results["F_l1"] = np.array([result[F_l1x],result[F_l1y]], dtype = float)
@@ -963,6 +938,7 @@ class linkage_robot():
         results["T1"] = float(result[T1])
         results["T2"] = float(result[T2])
         # print(results)
+        results.update(result_)
         
         upper_arm_link_to_forces = ["F_l1", "F_g1", "T1","F_t1_"]
         forearm_link_to_forces = ["F_l1_", "F_a2_", "F_l2"]
@@ -994,7 +970,121 @@ class linkage_robot():
         # print(tb)
 
         return results
+
+    def plot_link(self, link, ax, color = 'b'):
+        ax.plot(link[0,:],link[1,:],color)
+    
+    def plot_link2D(self, link_name, joint_pos, ax, color = 'b'):
+        theta1 = joint_pos[0]
+        theta2 = joint_pos[1]
+        link_coords = self.link_lambdas[link_name](theta1,theta2)
+        ax.plot(link_coords[1,:],link_coords[2,:],color)
+
+    def plot_robot(self, ax, joint_positions, simple = False, colors = None):
+        ax.axis('equal')
+        if colors is None:
+            colors = self.link_colors
+        else:
+            if isinstance(colors,str):
+                colors = {key:colors for key in self.link_colors}
+            else:
+                colors = self.link_colors | colors
+
+        for link in self.simple_links:
+            self.plot_link2D(link, joint_positions, ax, colors[link])
+            # self.plot_link(self.link_lambdas[link](np.pi/4,-np.pi/4),ax,color = colors[link])
+            # self.plot_link(self.links[link],ax,color = colors[link])
+
+        if not simple:
+            for link in self.grounded_links:
+                self.plot_link2D(link, joint_positions, ax, colors[link])
+                # self.plot_link(self.links[link],ax,color = colors[link])
+            
+        self.update_plot_lims(ax) #does not handle plot resizing well
+
+    def draw_torque(self, ax, link, value, center = 0, color = 'k', scale = 0.05, text = ""):
+        '''draws a curved arrow representing torque.'''
+
+        a = (180.0-45)/2
+        if value > 0:
+            curvature = 1
+            arrowstyle = patches.ArrowStyle.CurveB()
+            ang = np.pi/2
+        else:
+            curvature = -1
+            arrowstyle = patches.ArrowStyle.CurveB()
+            ang = -np.pi/2
+
+        torque_center = link[:2,center]
+        link_vector = link[:,-1]-link[:,center]
+        link_vector_hat = link_vector/np.linalg.norm(link_vector)
+        offset_angle = np.rad2deg(np.arccos(link_vector_hat[0]))
+
+        start_point = torque_center + link_vector_hat[:2]*scale
+        rot = np.array([[np.cos(ang), -np.sin(ang)],
+                        [np.sin(ang),  np.cos(ang)]])
+        end_point = torque_center + rot@link_vector_hat[:2]*scale
+        angleA = curvature*(180-a) + offset_angle
+        angleB= curvature*(90-(180-a))  + offset_angle
+        connectionstyle = patches.ConnectionStyle.Angle3(angleA=angleA, angleB=angleB)
+
+        a = patches.FancyArrowPatch(start_point, end_point,
+                             connectionstyle=connectionstyle, 
+                             arrowstyle=arrowstyle,
+                             mutation_scale=10)
+        ax.add_patch(a)
+        text_point = end_point + np.array([0, 0.03])
+        if not text == "":
+            ax.annotate(text,text_point,annotation_clip=False)
+
+        self.track_plot_window_size_(text_point)
+        self.track_plot_window_size_(end_point)
+
+    def draw_arrow(self, ax, start, end = None, vector = None, text = ''):
+        if end is None and vector is None:
+            raise NotImplementedError
         
+        start = deepcopy(start)
+        end = deepcopy(end)
+        vector = deepcopy(vector)
+
+        start_coords = np.array(start).reshape(-1)[:2]
+        
+        if not end is None:
+            end_coords = np.array(end).reshape(-1)[:2]
+        else:
+            end_coords = start_coords + np.array(vector).reshape(-1)[:2]
+
+        ax.annotate("", end_coords, xytext = start_coords, arrowprops = {'arrowstyle':'->'}, annotation_clip=False)
+        self.track_plot_window_size_(start_coords)
+        self.track_plot_window_size_(end_coords)
+        if not text == "":
+            if end_coords[0]-start_coords[0] < 0:
+                text_coords = end_coords - np.array([0.03,0.03])
+            else:
+                text_coords = end_coords
+            self.track_plot_window_size_(text_coords)
+            ax.annotate(text,text_coords,annotation_clip=False)
+        # ax.annotate('', end_coords, xytext = start_coords, arrowprops = {'width':0.5, 'headwidth':5, 'headlength':5})
+    
+    def draw_link_force(self,ax,link,value):
+        #midpoint
+        link_vector = link[:,-1]-link[:,0]
+        link_len = np.linalg.norm(link_vector)
+        point_a = link[:2,0]
+        point_b = (link_vector*0.25)[:2] + point_a
+        point_c = (link_vector*0.75)[:2] + point_a
+        point_d = link[:2,1]
+        midpoint = (link_vector*0.4)[:2] + point_a
+        
+        if value > 0:
+            self.draw_arrow(ax,point_b,end=point_a)
+            self.draw_arrow(ax,point_c,end=point_d,)
+        else:
+            self.draw_arrow(ax,point_a,end=point_b)
+            self.draw_arrow(ax,point_d,end=point_c)
+        ax.annotate(f"{value:.1f}N",midpoint)
+
     def plot_ee_load(self, ax, results = None, simple = True):
         '''plot force exerted by ee'''
         if results is None:
@@ -1138,22 +1228,36 @@ class linkage_robot():
         dur = time.time()-st
         print(f"calculate loads elapsed time = {dur}")
 
-
 # joint1_angle = 0
 # joint2_angle = -np.pi/2
 if __name__ == "__main__":
+    simple = False
 
     robot = linkage_robot()
-    joint_pos = [np.pi/4,-np.pi/4]
+    joint_pos = np.array([np.pi/4,-np.pi/4])
     robot.calculate_kinematics(joint_pos)
-    print(robot.forward_kinematics(joint_pos))
-    print(robot.inverse_kinematics(np.array([0,0])))
-    robot.calculate_equations_of_motion(simple = True)
+    # print(robot.forward_kinematics(joint_pos))
+    # print(robot.inverse_kinematics(np.array([0,0])))
+    robot.calculate_equations_of_motion(simple = simple)
     # print(robot.inverse_kinematics(np.array([0.5,0])))
-    simple = False
     # robot.calculate_kinematics([np.pi/4,-np.pi/4])
     # robot.calculate_kinematics([0,-np.pi/2])
-    results = robot.calculate_static_loads( ee_load = [0,10], simple = simple)
+    ee_load = np.array([0,10])
+    results = robot.calculate_static_loads( ee_load = ee_load, simple = simple)
+    results2 = robot.compute_static_loads_symbolic(joint_pos,ee_load,simple = simple)
+    for key in results2.keys():
+        print(f"{key} : {results[key]} vs {results2[key]}")
+    #test vectorized
+    joint_pos2 = np.array([[np.pi/4,-np.pi/4],[np.pi/4,-np.pi/4]])
+    ee_forces2 = np.array([[0,0],[1,-1]])
+    results2 = robot.compute_static_loads_symbolic(joint_pos2,ee_forces2,simple = simple)
+    print(results2)
+    # print(robot.force_lambdas['F_l1x'](joint_pos[0],joint_pos[1],np.array([0,0]), np.array([1,-1])))
+    # [print(k) for k in results.keys()]
+    # [print(k) for k in results2.keys()]
+
+
+
     fig, ax = plt.subplots()
     robot.plot_robot(ax, joint_pos, simple=simple)
     robot.plot_ee_load(ax,results, simple = simple)

@@ -578,13 +578,13 @@ class linkage_robot():
             #                                             F_eey,
             #                                         ], 
             #                                         self.symbolic_force_solutions_full[key].subs(self.constants_substitutions))
-        print(f"len of varaibles {len(variables)}")
-        _ = [print(i,v) for i, v in enumerate(variables)]
-        print(f"len of equations {len(equations)}")
-        _ = [print(i,e) for i, e in enumerate(equations)]
+        # print(f"len of varaibles {len(variables)}")
+        # _ = [print(i,v) for i, v in enumerate(variables)]
+        # print(f"len of equations {len(equations)}")
+        # _ = [print(i,e) for i, e in enumerate(equations)]
         self.symbolic_force_solutions = sp.solve(equations, variables)
         self.force_lambdas = {}
-        print(self.symbolic_force_solutions)
+        # print(self.symbolic_force_solutions)
         for key in self.symbolic_force_solutions.keys():
             self.force_lambdas[key.name] = sp.lambdify([
                                                     self.kinematic_symbols['theta1'], 

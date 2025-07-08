@@ -130,10 +130,12 @@ class linkage_robot():
     x_window = [0,0]
     y_window = [0,0]
 
-    def __init__(self):
+    def __init__(self, simple = True):
+        self.simple = simple
         self.calculate_b1_pos()
         _ = self.calculate_kinematics()
         self.symbolic_forward_kinematics()
+        self.calculate_equations_of_motion()
         return
     
     def set_joint_position(self, joint_angles):
@@ -170,7 +172,7 @@ class linkage_robot():
         try:
             sol1, sol2 = IK(pos[0],pos[1],self.l1,self.l2)
         except ValueError:
-            return [np.nan, np.nan]
+            return np.array([np.nan, np.nan])
         
         if sol1[0] >= 0:
             return np.array(sol1)
@@ -333,7 +335,7 @@ class linkage_robot():
         for key in self.symbolic_links.keys():
             self.link_lambdas[key] = sp.lambdify([theta1, theta2], self.symbolic_links[key].subs(constants_substitutions))
 
-    def calculate_equations_of_motion(self, simple = False):
+    def calculate_equations_of_motion(self):
         '''sets up the equations of motion'''
         #symbols
         F_g1x,F_g1y,F_g2x,F_g2y,T1,T2 = sp.symbols(('F_g1x','F_g1y','F_g2x','F_g2y','T1','T2') ,real = True)
@@ -344,7 +346,7 @@ class linkage_robot():
                     'F_l2x_','F_l2y_',), real = True)
         F_a1,F_a2,F_a1_,F_a2_,= sp.symbols(('F_a1', 'F_a2','F_a1_', 'F_a2_',), real = True)
         # l1x,l1y,l2x,l2y = sp.symbols(('l1x','l1y','l2x','l2y'))
-        if not simple:
+        if not self.simple:
             F_g3,F_g3_,F_b1,F_b1_,F_b2,F_b2_ = sp.symbols(('F_g3','F_g3_','F_b1','F_b1_','F_b2','F_b2_',), real = True)
             F_t1x,F_t1y,F_t1x_,F_t1y_,F_t2,F_t2_,F_eex,F_eey, = sp.symbols(('F_t1x','F_t1y',
                                                                             'F_t1x_','F_t1y_',
@@ -510,7 +512,7 @@ class linkage_robot():
                     T2
                     ]
         
-        if not simple:
+        if not self.simple:
             equations_partial = [
                 force_balance_eex,
                 force_balance_eey,
@@ -569,8 +571,8 @@ class linkage_robot():
             self.force_lambdas[key.name] = sp.lambdify([
                                                     self.kinematic_symbols['theta1'], 
                                                     self.kinematic_symbols['theta2'],
-                                                    F_l2x if simple else F_eex,
-                                                    F_l2y if simple else F_eey,
+                                                    F_l2x if self.simple else F_eex,
+                                                    F_l2y if self.simple else F_eey,
                                                   ], 
                                                   self.symbolic_force_solutions[key].subs(self.constants_substitutions))
         #solve system of equations
@@ -587,8 +589,7 @@ class linkage_robot():
         #     pickle.dump(result, f)
     def compute_static_loads_symbolic(self, 
                                       joint_pos : np.ndarray, 
-                                      ee_load : np.ndarray, 
-                                      simple:bool = False) -> dict:
+                                      ee_load : np.ndarray) -> dict:
         '''evaluates static loads for all forces assuming ee_load and joint positions are known.
         Accepts vectorized inputs joint_pos and ee_load. Must have shape (2,...)'''
         
@@ -633,7 +634,7 @@ class linkage_robot():
                 except KeyError:
                     computed_forces[vec_key] = np.zeros_like(ee_load, dtype=float)
                     computed_forces[vec_key][1] = computed_forces[key]
-        if simple:
+        if self.simple:
             computed_forces['F_l2x'] = ee_load[0]      
             computed_forces['F_l2y'] = ee_load[1]
             computed_forces['F_l2'] = ee_load
@@ -644,9 +645,6 @@ class linkage_robot():
             computed_forces['F_eex'] = ee_load[0]      
             computed_forces['F_eey'] = ee_load[1]
             computed_forces['F_ee'] = ee_load
-            # computed_forces['F_eex_'] = -ee_load[0]      
-            # computed_forces['F_eey_'] = -ee_load[1]
-            # computed_forces['F_ee_'] = -np.array(ee_load)
         
         return computed_forces
 
@@ -1233,26 +1231,26 @@ class linkage_robot():
 if __name__ == "__main__":
     simple = False
 
-    robot = linkage_robot()
+    robot = linkage_robot(simple = simple)
     joint_pos = np.array([np.pi/4,-np.pi/4])
     robot.calculate_kinematics(joint_pos)
     # print(robot.forward_kinematics(joint_pos))
     # print(robot.inverse_kinematics(np.array([0,0])))
-    robot.calculate_equations_of_motion(simple = simple)
+    # robot.calculate_equations_of_motion()
     # print(robot.inverse_kinematics(np.array([0.5,0])))
     # robot.calculate_kinematics([np.pi/4,-np.pi/4])
     # robot.calculate_kinematics([0,-np.pi/2])
     ee_load = np.array([0,10])
     results = robot.calculate_static_loads( ee_load = ee_load, simple = simple)
-    results2 = robot.compute_static_loads_symbolic(joint_pos,ee_load,simple = simple)
+    results2 = robot.compute_static_loads_symbolic(joint_pos,ee_load)
     for key in results2.keys():
         print(f"{key} : {results[key]} vs {results2[key]}")
     #test vectorized
 
     joint_pos2 = np.repeat(joint_pos.reshape(2,-1),2,axis = 1)
-    print(joint_pos2)
+    # print(joint_pos2)
     ee_forces2 = np.array([[0,0],[1,-1]])
-    results2 = robot.compute_static_loads_symbolic(joint_pos2,ee_forces2,simple = simple)
+    results2 = robot.compute_static_loads_symbolic(joint_pos2,ee_forces2)
     print(results2)
     # print(robot.force_lambdas['F_l1x'](joint_pos[0],joint_pos[1],np.array([0,0]), np.array([1,-1])))
     # [print(k) for k in results.keys()]

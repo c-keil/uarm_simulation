@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from uarm_kinematics_loads_simulation import linkage_robot
+import time
 
 simple = False
 robot = linkage_robot(simple)
@@ -28,7 +29,7 @@ for j, y in enumerate(ypos):
         pos = [y,z]
         
         joint_pos = robot.inverse_kinematics(pos)
-        if np.any(np.isnan(joint_pos)) or not robot.check_joint_lims(joint_pos):
+        if np.any(np.isnan(joint_pos)) or not robot.check_joints(joint_pos):
             for ml in max_loads:
                 ml[i,j] = np.nan
             continue
@@ -46,25 +47,19 @@ for j, y in enumerate(ypos):
             max_load[i,j] = np.linalg.norm(load)
         
         robot.plot_robot(ax, joint_pos)
-        plt.draw()
+        # plt.draw()
+        # time.sleep(0.1)
             
 fig, axes = plt.subplots(2,2)
 ims = []
 for ax, loads, vect in zip(axes.reshape(-1),max_loads,ee_loads):
-    # print(yy.shape)
-    # print(zz.shape)
-    # print(loads.shape)
-    pm= ax.pcolormesh(yy, zz, loads, shading='nearest')
+    ax.axis('equal')
+    pm = ax.pcolormesh(yy, zz, loads, shading='nearest')
     ims.append(pm)
     plt.colorbar(pm, ax = ax, label='Nm')
     ax.set_title(f"force vector {vect}")
     ax.set_xlabel('y')
     ax.set_ylabel('z')
-# fig.colorbar(ims[0], ax=axes[0])
+
 plt.show()
-# fig, ax = plt.subplots()
-# robot.plot_robot(ax, simple=simple)
-# robot.plot_ee_load(ax,results, simple = simple)
-# # robot.draw_arrow(ax,(0,0),(0.5,0.5),)
-# robot.plot_link_loads(results = results, simple = simple)
-# plt.show()
+

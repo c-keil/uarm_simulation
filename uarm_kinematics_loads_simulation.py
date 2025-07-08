@@ -62,6 +62,7 @@ class linkage_robot():
         [0,np.pi],
         [-np.pi,0]
         ])
+    linkage_collapse_angle = np.radians(15)
 
     #Main arm links
     link_l1 = None
@@ -184,19 +185,28 @@ class linkage_robot():
         else:
             return np.array(sol2)
     
-    def check_joint_lims(self, joint_positions:np.ndarray) -> np.ndarray:
+    def check_joint_lims(self, joint_positions:np.ndarray) -> bool:
         '''returns falso if supplied joints positions are outside limmits. Joint positions should have shape
         [[joint0],
-        [joint1]]'''
+        [joint1]] TODO, this does not support vectorized joints properly'''
         # print(joint_positions.shape)
         # print(self.joint_lims.shape)
         # print(self.joint_lims[:,0].shape)
-        print("check joint lims")
-        print(self.joint_lims)
-        print(joint_positions)
-        print(self.joint_lims[:,0].reshape(2,1) <= joint_positions.reshape(2,-1))
+        # print("check joint lims")
+        # print(self.joint_lims)
+        # print(joint_positions)
+        # print(self.joint_lims[:,0].reshape(2,1) <= joint_positions.reshape(2,-1))
         return np.all(self.joint_lims[:,0].reshape(2,1) <= joint_positions.reshape(2,-1)) and np.all( joint_positions.reshape(2,-1) <= self.joint_lims[:,1].reshape(2,1))
 
+    def check_linkage_feasibility(self, joint_positions : np.ndarray) -> bool:
+        '''Checks to ensure that the joint pos will not result in a collapsed linkage/kinematic singularity'''
+        joint_delta = joint_positions[0] - joint_positions[1]
+        return np.all(joint_delta > self.linkage_collapse_angle) and np.all(joint_delta < np.pi-self.linkage_collapse_angle)
+    
+    def check_joints(self, joint_positions: np.ndarray) ->bool:
+        '''checks joint lims and linkage collapse'''
+        return self.check_joint_lims(joint_positions) and self.check_linkage_feasibility(joint_positions)
+    
     def calculate_kinematics(self, joint_angles = None):
         if not joint_angles is None:
             self.joint_angles = joint_angles
@@ -1254,6 +1264,7 @@ if __name__ == "__main__":
     robot.calculate_kinematics(joint_pos)
 
     print(robot.check_joint_lims(joint_pos))
+    print(robot.check_linkage_feasibility(joint_pos))
     # print(robot.forward_kinematics(joint_pos))
     # print(robot.inverse_kinematics(np.array([0,0])))
     # robot.calculate_equations_of_motion()
@@ -1269,6 +1280,8 @@ if __name__ == "__main__":
 
     joint_pos2 = np.repeat(joint_pos.reshape(2,-1),2,axis = 1)
     print(robot.check_joint_lims(joint_pos2))
+    print(robot.check_linkage_feasibility(joint_pos2))
+    print(robot.check_linkage_feasibility(np.array([0,0])))
     # print(joint_pos2)
     ee_forces2 = np.array([[0,0],[1,-1]])
     results2 = robot.compute_static_loads_symbolic(joint_pos2,ee_forces2)

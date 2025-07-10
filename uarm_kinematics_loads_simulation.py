@@ -130,6 +130,10 @@ class linkage_robot():
                     ["ee1","ee2","ee3"]]
     
     link_names_to_objects = {k:o for k,o in zip(link_names,link_objects)}
+    link_objects_to_names = {}
+    for name, obs in zip(link_names, link_objects):
+        for o in obs:
+            link_objects_to_names[o] = name
 
     link_colors = {link:"teal" for link in grounded_links}
     link_colors = link_colors | {link:"darkviolet" for link in simple_links}
@@ -621,7 +625,7 @@ class linkage_robot():
     def define_force_locations(self):
         '''defines force locations for plotting'''
         self.force_locations = {
-                        "F_l1":self.link_l1[:,-1],
+                        "F_l1":self.link_l1[:,-1], #TODO - this is not updated properly now, FIX
                         "F_l1_":self.link_l1[:,-1],
                         "F_g1":self.link_l1[:,0],
                         "F_g2":self.link_a1[:,0],
@@ -644,6 +648,54 @@ class linkage_robot():
                         "F_ee":self.link_ee2[:,-1],
                         "F_g3":self.link_b1[:,0]
                         }
+        self.force_to_link_object={
+                        "F_l1":'l1',
+                        "F_l1_":'l1',
+                        "F_g1":'l1',
+                        "F_g2":'a1',
+                        "F_t1":'l1',
+                        "F_t1_":'l1',
+                        "T1":'l1',
+                        "T2":'a1',
+                        "F_a1":'a2',
+                        "F_a1_":'a2',
+                        "F_a2":'a2',
+                        "F_a2_":'a2',
+                        "F_b1":'b1',
+                        "F_b1_":'b1',
+                        "F_t2":'b2',
+                        "F_t2_":'b2',
+                        "F_b2":'b2',
+                        "F_b2_":'b2',
+                        "F_l2":'l2',
+                        "F_l2_":'l2',
+                        "F_ee":'ee2',
+                        "F_g3":'b1',
+        }
+        self.force_location_index={
+            "F_l1":-1,
+            "F_l1_":-1,
+            "F_g1":0,
+            "F_g2":0,
+            "F_t1":-1,
+            "F_t1_":-1,
+            "T1":0,
+            "T2":0,
+            "F_a1":0,
+            "F_a1_":0,
+            "F_a2":-1,
+            "F_a2_":-1,
+            "F_b1":-1,
+            "F_b1_":-1,
+            "F_t2":0,
+            "F_t2_":0,
+            "F_b2":1,
+            "F_b2_":1,
+            "F_l2":-1,
+            "F_l2_":-1,
+            "F_ee":-1,
+            "F_g3":0
+        }
         upper_arm_link_to_forces = ["F_l1", "F_g1", "T1","F_t1_"]
         forearm_link_to_forces = ["F_l1_", "F_a2_", "F_l2"]
         a1_link_to_forces = ["T2","F_a1","F_g2"]
@@ -663,6 +715,7 @@ class linkage_robot():
             self.link_names[6]:forearm_grounded_link_forces,
             self.link_names[7]:ee_forces,
         }
+
     
     def compute_static_loads_symbolic(self, 
                                       joint_pos : np.ndarray, 
@@ -1046,6 +1099,35 @@ class linkage_robot():
 
         return results
 
+    def get_force_locations(self, link_names, joint_positions):
+        '''given joint positions, return a dict of force locations. 
+        TODO, combine with other FK calls to reduce computation'''
+        locations = {}
+        assert type(link_names) is list
+
+        for link_name in link_names:
+            # print(link_name)
+            forces = self.forces_per_link[link_name]
+            
+            for force in forces:
+                #get force location
+                sublink = self.force_to_link_object[force]
+                sublink_index = self.force_location_index[force]
+                link_positions = self.link_lambdas[sublink](joint_positions[0], joint_positions[1])
+                locations[force] = link_positions[:,sublink_index]
+                # print(force, locations[force])
+            
+            # self.force_to_link_object()
+            # for l in self.link_names_to_objects[link_name]:
+            #     link_positions = self.link_lambdas[l](joint_positions[0], joint_positions[1])
+            # print(link_positions)
+            # print(forces)
+            
+        return locations
+
+
+            
+
     def plot_link(self, link, ax, color = 'b'):
         ax.plot(link[0,:],link[1,:],color)
     
@@ -1232,7 +1314,10 @@ class linkage_robot():
         '''plots loads for each link as a separate free body'''
         if results is None:
             results = self.calculate_static_loads(simple = simple)
-        
+        print("results")
+        [print(k,results[k]) for k in results]
+        print("###")
+        # print(results)
         if simple:
             nplots = 4
             fig, axes = plt.subplots(2,2)
@@ -1249,35 +1334,48 @@ class linkage_robot():
                 continue
             ax.set_title(self.link_names[i])
             self.plot_robot(ax, joint_positions, simple = simple, colors = 'lightgray')
+
+            link_name = self.link_names[i]
+
             #highlight link
+            # print(f'drawing link {link_name}')
             for l in self.link_objects[i]:
                 self.plot_link(self.links[l],ax,color = "darkblue")
 
-                #add forces
-                forces = self.forces_per_link[self.link_names[i]]
-                for force in forces:
-                    
-                    if force[0]=="T":
-                        torque = results[force]
-                        # torque_location = self.force_locations[force][:2]
-                        torque_link = self.links[l]
-                        # torque_link = self.links['l1']
-                        self.draw_torque(ax, torque_link, torque, 0, text=f"{torque:.1f}Nm")
-                        continue
+            #force locations
+            force_locations = self.get_force_locations(self.link_names, joint_positions)
+            # print(f'found forces:')
+            # print(force_locations)
+            #add forces
+            forces = self.forces_per_link[link_name]
+            for force in forces:
+                # print(f'drawing force {force}')
+                
+                if force[0]=="T":
+                    torque = results[force]
+                    # torque_location = self.force_locations[force][:2]
+                    torque_link = self.links[l]
+                    # torque_link = self.links['l1']
+                    self.draw_torque(ax, torque_link, torque, 0, text=f"{torque:.1f}Nm")
+                    continue
 
-                    scalar_force = np.linalg.norm(results[force])
-                    # print(force)
-                    # print(self.force_locations[force])
-                    # print(results[force] * scale)
-                    force_location = self.force_locations[force][:2]
-                    scaled_force_vector = results[force] * scale
-                    force_arrow_endpoint = force_location + scaled_force_vector
-                    if scalar_force < 0.01:
-                        continue
-                    self.draw_arrow(ax, 
-                                    force_location,
-                                    force_arrow_endpoint,
-                                    text=f"{scalar_force:.1f}N")
+                scalar_force = np.linalg.norm(results[force])
+                # print(force)
+                # print(self.force_locations[force])
+                # print(results[force] * scale)
+                # force_location = self.force_locations[force][:2]
+                # force_location = force_locations[force][:2]
+                force_location = force_locations[force][1:]
+                scaled_force_vector = results[force] * scale
+                print("scalar force")
+                print(f"results[{force}] = {results[force]}")
+                force_arrow_endpoint = force_location + scaled_force_vector
+                if scalar_force < 0.01:
+                    continue
+                self.draw_arrow(ax, 
+                                force_location,
+                                force_arrow_endpoint,
+                                text=f"{scalar_force:.1f}N")
 
             self.update_plot_lims(ax)
 
@@ -1332,9 +1430,10 @@ if __name__ == "__main__":
     print(robot.check_linkage_feasibility(joint_pos2))
     print(robot.check_linkage_feasibility(np.array([0,0])))
     # print(joint_pos2)
-    ee_forces2 = np.array([[0,0],[1,-1]])
-    results2 = robot.compute_static_loads_symbolic(joint_pos2,ee_forces2)
-    print(results2)
+    # ee_forces2 = np.array([[0,0],[1,-1]])
+    # results2 = robot.compute_static_loads_symbolic(joint_pos2,ee_forces2)
+    # print(results2)
+
     # print(robot.force_lambdas['F_l1x'](joint_pos[0],joint_pos[1],np.array([0,0]), np.array([1,-1])))
     # [print(k) for k in results.keys()]
     # [print(k) for k in results2.keys()]

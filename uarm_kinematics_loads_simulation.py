@@ -1456,7 +1456,15 @@ class linkage_robot():
             fig2, axes2 = plt.subplots(2,2)
             axes = np.vstack((axes1,axes2))
         
-        scale = 0.001
+        #get_max_load
+        max_load = 1
+        for key in results.keys():
+            if key[0] == 'T':
+                continue
+            load = np.linalg.norm(results[key])
+            if load > max_load:
+                max_load = load
+        scale = 0.2/max_load
 
         for i, ax in enumerate(axes.reshape(-1)):
             if i==nplots:

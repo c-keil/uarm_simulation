@@ -179,7 +179,7 @@ class linkage_robot():
         
         return self.wrist_fk(joint_angles[0],joint_angles[1])
     
-    def inverse_kinematics(self,pos,simple = True):
+    def inverse_kinematics(self,pos):
         '''Calculates joint angles given the wrist position'''
         try:
             sol1, sol2 = IK(pos[0],pos[1],self.l1,self.l2)
@@ -1441,9 +1441,9 @@ class linkage_robot():
         '''plots loads for each link as a separate free body'''
         if results is None:
             results = self.calculate_static_loads(simple = simple)
-        print("results")
-        [print(k,results[k]) for k in results]
-        print("###")
+        # print("results")
+        # [print(k,results[k]) for k in results]
+        # print("###")
         # print(results)
         if simple:
             nplots = 4
@@ -1473,19 +1473,19 @@ class linkage_robot():
             link_name = self.link_names[i]
 
             #highlight link
-            print(f'drawing link {link_name}')
+            # print(f'drawing link {link_name}')
             for l in self.link_objects[i]:
-                print(f'drawing sub link {l}')
+                # print(f'drawing sub link {l}')
                 self.plot_link2D(l,joint_positions,ax,color = "darkblue")
 
             #force locations
             force_locations = self.get_force_locations(self.link_names, joint_positions)
-            print(f'found forces:')
-            print(force_locations)
+            # print(f'found forces:')
+            # print(force_locations)
             #add forces
             forces = self.forces_per_link[link_name]
             for force in forces:
-                print(f'drawing force {force}')
+                # print(f'drawing force {force}')
                 
                 if force[0]=="T":
                     torque = results[force]
@@ -1503,8 +1503,8 @@ class linkage_robot():
                 # force_location = force_locations[force][:2]
                 force_location = force_locations[force][1:]
                 scaled_force_vector = results[force].reshape(-1)[1:] * scale
-                print("scalar force")
-                print(f"results[{force}] = {results[force]}")
+                # print("scalar force")
+                # print(f"results[{force}] = {results[force]}")
                 force_arrow_endpoint = force_location + scaled_force_vector
                 if scalar_force < 0.01:
                     continue
@@ -1512,7 +1512,7 @@ class linkage_robot():
                                 force_location,
                                 force_arrow_endpoint,
                                 text=f"{scalar_force:.1f}N")
-                print(f"drew arrow {force_location} to {force_arrow_endpoint}")
+                # print(f"drew arrow {force_location} to {force_arrow_endpoint}")
 
             self.update_plot_lims(ax)
 
@@ -1544,7 +1544,24 @@ if __name__ == "__main__":
     simple = False
 
     robot = linkage_robot(simple = simple)
-    joint_pos = np.array([np.pi/4,-np.pi/4])
+
+    yy = np.linspace(0.1,0.5,10)
+    z = -0.7
+    f,a = plt.subplots()
+    for y in yy:
+        jp = robot.inverse_kinematics([y,z])
+        fk = robot.forward_kinematics(jp)
+        print([y,z], jp.reshape(-1), fk.reshape(-1))
+        robot.plot_robot(a, jp)
+    plt.show()
+
+    # pos = [0.1, -0.7]
+    # jp = robot.inverse_kinematics(pos)
+    # fk = robot.forward_kinematics(jp)
+    # joint_pos = np.array([0.6435, -2.2143])
+    # print(pos,jp,fk,joint_pos)
+    quit()
+    # joint_pos = np.array([np.pi/4,-np.pi/4])
     robot.calculate_kinematics(joint_pos)
 
     print(robot.check_joint_lims(joint_pos))

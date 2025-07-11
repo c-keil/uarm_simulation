@@ -40,13 +40,13 @@ class linkage_robot():
     t1 = 0.13
     t2 = 0.1
     t1_start_angle = np.radians(135)
-    t2_start_angle = np.radians(45)
+    t2_start_angle = np.radians(30)
     t_12_angle = t2_start_angle - t1_start_angle
 
     #ee_link
     e1 = t2
     e2_angle = 0
-    e_12_angle = np.radians(-45)
+    e_12_angle = np.radians(-t2_start_angle)
     e2 = e1*np.cos(e_12_angle)
 
     joint1_start_angle = 0
@@ -195,13 +195,7 @@ class linkage_robot():
         '''returns falso if supplied joints positions are outside limmits. Joint positions should have shape
         [[joint0],
         [joint1]] TODO, this does not support vectorized joints properly'''
-        # print(joint_positions.shape)
-        # print(self.joint_lims.shape)
-        # print(self.joint_lims[:,0].shape)
-        # print("check joint lims")
-        # print(self.joint_lims)
-        # print(joint_positions)
-        # print(self.joint_lims[:,0].reshape(2,1) <= joint_positions.reshape(2,-1))
+        
         return np.all(self.joint_lims[:,0].reshape(2,1) <= joint_positions.reshape(2,-1)) and np.all( joint_positions.reshape(2,-1) <= self.joint_lims[:,1].reshape(2,1))
 
     def check_linkage_feasibility(self, joint_positions : np.ndarray) -> bool:
@@ -214,6 +208,7 @@ class linkage_robot():
         return self.check_joint_lims(joint_positions) and self.check_linkage_feasibility(joint_positions)
     
     def calculate_kinematics(self, joint_angles = None):
+        '''Depreciated. Use symbolic fk'''
         if not joint_angles is None:
             self.joint_angles = joint_angles
         
@@ -644,13 +639,13 @@ class linkage_robot():
             #                                             F_eey,
             #                                         ], 
             #                                         self.symbolic_force_solutions_full[key].subs(self.constants_substitutions))
-        print(f"len of varaibles {len(variables)}")
-        _ = [print(i,v) for i, v in enumerate(variables)]
-        print(f"len of equations {len(equations)}")
-        _ = [print(i,e) for i, e in enumerate(equations)]
+        # print(f"len of varaibles {len(variables)}")
+        # _ = [print(i,v) for i, v in enumerate(variables)]
+        # print(f"len of equations {len(equations)}")
+        # _ = [print(i,e) for i, e in enumerate(equations)]
         self.symbolic_force_solutions = sp.solve(equations, variables)
         
-        [print(key, self.symbolic_force_solutions[key]) for key in self.symbolic_force_solutions.keys()]
+        # [print(key, self.symbolic_force_solutions[key]) for key in self.symbolic_force_solutions.keys()]
 
         # print('test vector eqn')
         # Fa2_vec = Fa2_vec.subs(self.symbolic_force_solutions)
@@ -1258,7 +1253,7 @@ class linkage_robot():
             
 
     def plot_link(self, link, ax, color = 'b'):
-        ax.plot(link[0,:],link[1,:],color)
+        ax.plot(link[0,:],link[1,:],color,linewidth=2)
     
     def plot_link2D(self, link_name, joint_pos, ax, color = 'b'):
         theta1 = joint_pos.reshape(-1)[0]
@@ -1340,7 +1335,7 @@ class linkage_robot():
             end_coords = np.array(end).reshape(-1)[:2]
         else:
             end_coords = start_coords + np.array(vector).reshape(-1)[:2]
-
+        
         ax.annotate("", end_coords, xytext = start_coords, arrowprops = {'arrowstyle':'->'}, annotation_clip=False)
         self.track_plot_window_size_(start_coords)
         self.track_plot_window_size_(end_coords)
@@ -1371,13 +1366,14 @@ class linkage_robot():
             self.draw_arrow(ax,point_d,end=point_c)
         ax.annotate(f"{value:.1f}N",midpoint)
 
-    def plot_ee_load(self, ax, results = None, simple = True):
+    def plot_ee_load(self, ax, results, joint_pos,):
         '''plot force exerted by ee'''
-        if results is None:
-            results = self.calculate_static_loads()
+        # if results is None:
+        #     # results = self.calculate_static_loads()
+        #     results = self.compute_static_load_vectors()
         # print(results)
 
-        if simple:
+        if self.simple:
             #l2
             F_l2_vec = results["F_l2"]
             F_l2 = np.linalg.norm(F_l2_vec)
@@ -1385,10 +1381,12 @@ class linkage_robot():
             F_l2_pos = self.link_l2[:2,-1]
             self.draw_arrow(ax, F_l2_pos,vector=-F_l2_vec,text=f"{F_l2:.1f}N")
         else:
-            F_ee_vec = results["F_ee"]
+            F_ee_vec = results["F_ee"].reshape(-1)[1:]
             F_ee = np.linalg.norm(F_ee_vec)
-            F_ee_vec = F_ee_vec/500
-            F_ee_pos = self.link_ee2[:2,-1]
+            F_ee_vec = F_ee_vec * (0.1/F_ee)
+
+            res = self.get_force_locations(['End Effector'],joint_pos)
+            F_ee_pos = res['F_ee'].reshape(-1)[1:]
             self.draw_arrow(ax, F_ee_pos,vector=-F_ee_vec,text=f"{F_ee:.1f}N")
 
         # F_g1_vec = results["F_g1"]
@@ -1477,7 +1475,8 @@ class linkage_robot():
             #highlight link
             print(f'drawing link {link_name}')
             for l in self.link_objects[i]:
-                self.plot_link(self.links[l],ax,color = "darkblue")
+                print(f'drawing sub link {l}')
+                self.plot_link2D(l,joint_positions,ax,color = "darkblue")
 
             #force locations
             force_locations = self.get_force_locations(self.link_names, joint_positions)
@@ -1584,7 +1583,7 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots()
     robot.plot_robot(ax, joint_pos, simple=simple)
-    robot.plot_ee_load(ax,results, simple = simple)
+    robot.plot_ee_load(ax,results2, joint_pos)
     # robot.draw_arrow(ax,(0,0),(0.5,0.5),)
     robot.plot_link_loads(joint_pos, results = results2, simple = simple)
     # robot.time_analysis()

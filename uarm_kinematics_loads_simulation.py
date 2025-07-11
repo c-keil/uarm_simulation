@@ -39,7 +39,7 @@ class linkage_robot():
     b1_base = None
     t1 = 0.13
     t2 = 0.1
-    t1_start_angle = np.radians(135)
+    t1_start_angle = np.radians(180-30)
     t2_start_angle = np.radians(30)
     t_12_angle = t2_start_angle - t1_start_angle
 
